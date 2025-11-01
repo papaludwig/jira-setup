@@ -20,6 +20,17 @@ Run from an environment with:
 - Jira download URL, database password, and TLS materials accessible as environment variables.
 - The `community.postgresql` and `community.general` Ansible collections (`ansible-galaxy collection install community.postgresql community.general`).
 
+## Getting the Repository in AWS CloudShell
+
+AWS CloudShell persists the contents of your home directory across sessions, so you typically only need to download the code once per region. If you start in a brand-new environment—or want to refresh to the latest commit—use `curl` to grab the repository tarball and extract it:
+
+```bash
+curl -L https://github.com/<your-org>/jira-setup/archive/refs/heads/main.tar.gz | tar -xz
+cd jira-setup-main
+```
+
+Replace `jira-setup-main` with the extracted directory name if the default branch changes. Future CloudShell sessions can simply `cd` into the persisted directory.
+
 ## Quick Start
 
 1. Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars` and fill in the AWS-specific values (subnet ID, Elastic IP allocation, SSH key, etc.).
@@ -52,3 +63,17 @@ Because real AWS infrastructure is required, automated testing is not available 
 4. Optional: Stop Jira and create an AMI for future reuse.
 
 Document the validation run (timestamp, region, commit hash) in pull request notes to keep the history auditable.
+
+## Refreshing TLS Materials
+
+Whenever you renew the Let’s Encrypt wildcard certificate, update the SecureString parameters so future runs deploy the new files. The helper script below base64-encodes your `fullchain.pem` and `privkey.pem` and writes them to Parameter Store:
+
+```bash
+./scripts/update_tls_parameters.sh \
+  --cert-path /path/to/fullchain.pem \
+  --key-path /path/to/privkey.pem \
+  --cert-parameter /demo/jira/cert \
+  --key-parameter /demo/jira/key
+```
+
+The script overwrites the existing values with the freshly encoded blobs, matching what `bootstrap.sh` expects when exporting `JIRA_TLS_CERT_B64` and `JIRA_TLS_KEY_B64`.
