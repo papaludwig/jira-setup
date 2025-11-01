@@ -1,0 +1,50 @@
+---
+- name: Install PostgreSQL server packages
+  ansible.builtin.dnf:
+    name:
+      - postgresql15
+      - postgresql15-server
+      - postgresql15-contrib
+    state: present
+
+- name: Initialize PostgreSQL database
+  ansible.builtin.command: /usr/pgsql-15/bin/postgresql-15-setup initdb
+  args:
+    creates: /var/lib/pgsql/15/data/PG_VERSION
+
+- name: Configure PostgreSQL to listen on all interfaces
+  ansible.builtin.lineinfile:
+    path: /var/lib/pgsql/15/data/postgresql.conf
+    regexp: '^#?listen_addresses'
+    line: "listen_addresses = '*'"
+
+- name: Allow Jira host to connect via pg_hba.conf
+  ansible.builtin.blockinfile:
+    path: /var/lib/pgsql/15/data/pg_hba.conf
+    block: |
+      host    jira    jira    127.0.0.1/32        md5
+      host    jira    jira    ::1/128             md5
+    marker: "# {mark} Ansible managed Jira access"
+
+- name: Ensure PostgreSQL service is enabled and running
+  ansible.builtin.service:
+    name: postgresql-15
+    state: started
+    enabled: true
+
+- name: Create database user for Jira
+  community.postgresql.postgresql_user:
+    name: jira
+    password: "{{ lookup('env', 'JIRA_DB_PASSWORD') }}"
+    db: postgres
+    login_unix_socket: /var/run/postgresql
+
+- name: Create Jira database
+  community.postgresql.postgresql_db:
+    name: jira
+    owner: jira
+    encoding: UTF8
+    lc_collate: C
+    lc_ctype: C
+    template: template0
+    login_unix_socket: /var/run/postgresql

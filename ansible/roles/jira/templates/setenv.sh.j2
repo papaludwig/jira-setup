@@ -1,0 +1,6 @@
+#!/bin/sh
+JAVA_HOME="/usr/lib/jvm/java-11-amazon-corretto"
+CATALINA_OPTS="-Xms4g -Xmx4g -Datlassian.plugins.enable.wait=300"
+export JAVA_HOME CATALINA_OPTS
+
+. "$(dirname "$0")"/catalina.sh "$@"
