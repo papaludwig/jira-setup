@@ -24,20 +24,10 @@ variable "instance_type" {
   default     = "m6i.xlarge"
 }
 
-variable "ssh_key_name" {
-  type        = string
-  description = "Name of the EC2 key pair to associate"
-}
-
 variable "root_volume_size" {
   type        = number
   description = "Root volume size in GiB"
   default     = 100
-}
-
-variable "allowed_ssh_cidr" {
-  type        = string
-  description = "CIDR allowed to SSH to the instance"
 }
 
 variable "name_prefix" {
@@ -48,7 +38,7 @@ variable "name_prefix" {
 
 variable "ansible_user" {
   type        = string
-  description = "Username that Ansible will use for SSH"
+  description = "Username that Ansible will use when connecting via SSM"
   default     = "ansible"
 }
 
