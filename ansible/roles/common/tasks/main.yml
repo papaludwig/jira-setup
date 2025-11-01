@@ -1,0 +1,46 @@
+---
+- name: Update package metadata
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+  register: _update_packages
+  retries: 3
+  delay: 10
+  until: _update_packages is succeeded
+
+- name: Install base packages
+  ansible.builtin.dnf:
+    name:
+      - git
+      - unzip
+      - firewalld
+    state: present
+
+- name: Ensure firewalld is disabled (security managed by security group)
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+    enabled: false
+
+- name: Create jira service user
+  ansible.builtin.user:
+    name: jira
+    comment: Jira application user
+    system: true
+    shell: /bin/bash
+
+- name: Create Jira home directory
+  ansible.builtin.file:
+    path: /var/atlassian/application-data/jira
+    owner: jira
+    group: jira
+    mode: "0750"
+    state: directory
+
+- name: Ensure directories for downloads exist
+  ansible.builtin.file:
+    path: /opt/atlassian
+    owner: root
+    group: root
+    mode: "0755"
+    state: directory

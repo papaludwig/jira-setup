@@ -1,0 +1,75 @@
+---
+- name: Ensure Jira download URL provided
+  ansible.builtin.assert:
+    that:
+      - jira_download_url | length > 0
+    fail_msg: "Set the JIRA_TARBALL_URL environment variable before running the playbook."
+
+- name: Derive Jira archive basename
+  ansible.builtin.set_fact:
+    jira_archive_basename: "{{ jira_download_url | basename | regex_replace('\\.tar\\.gz$', '') }}"
+
+- name: Download Jira tarball
+  ansible.builtin.get_url:
+    url: "{{ jira_download_url }}"
+    dest: "/opt/atlassian/{{ jira_download_url | basename }}"
+    checksum: "{{ jira_tarball_checksum | default(omit) }}"
+    mode: "0644"
+
+- name: Extract Jira archive
+  ansible.builtin.unarchive:
+    src: "/opt/atlassian/{{ jira_download_url | basename }}"
+    dest: /opt/atlassian
+    remote_src: true
+    creates: "/opt/atlassian/{{ jira_archive_basename }}"
+
+- name: Create jira symlink to current version
+  ansible.builtin.file:
+    src: "/opt/atlassian/{{ jira_archive_basename }}"
+    dest: /opt/atlassian/jira
+    state: link
+
+- name: Ensure Jira install owned by jira user
+  ansible.builtin.file:
+    path: /opt/atlassian/{{ item }}
+    state: directory
+    recurse: true
+    owner: jira
+    group: jira
+  loop:
+    - "{{ jira_archive_basename }}"
+    - jira
+
+- name: Template Jira dbconfig.xml
+  ansible.builtin.template:
+    src: dbconfig.xml.j2
+    dest: /var/atlassian/application-data/jira/dbconfig.xml
+    owner: jira
+    group: jira
+    mode: "0640"
+
+- name: Template Jira setenv.sh
+  ansible.builtin.template:
+    src: setenv.sh.j2
+    dest: /opt/atlassian/jira/bin/setenv.sh
+    owner: jira
+    group: jira
+    mode: "0750"
+
+- name: Install systemd unit for Jira
+  ansible.builtin.template:
+    src: jira.service.j2
+    dest: /etc/systemd/system/jira.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Ensure Jira service enabled and started
+  ansible.builtin.service:
+    name: jira
+    state: started
+    enabled: true

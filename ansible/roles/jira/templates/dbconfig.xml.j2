@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jira-database-config>
+  <name>defaultDS</name>
+  <database-type>postgres72</database-type>
+  <jdbc-datasource>
+    <url>jdbc:postgresql://localhost:5432/jira</url>
+    <driver-class>org.postgresql.Driver</driver-class>
+    <username>jira</username>
+    <password>{{ lookup('env', 'JIRA_DB_PASSWORD') }}</password>
+    <validation-query>select 1</validation-query>
+    <pool-min-size>10</pool-min-size>
+    <pool-max-size>50</pool-max-size>
+    <pool-max-wait>30000</pool-max-wait>
+  </jdbc-datasource>
+</jira-database-config>

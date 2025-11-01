@@ -1,0 +1,12 @@
+---
+- name: Configure Jira demo host
+  hosts: jira
+  become: true
+  vars:
+    jira_download_url: "{{ lookup('env', 'JIRA_TARBALL_URL') }}"
+  roles:
+    - role: common
+    - role: java
+    - role: postgres
+    - role: jira
+    - role: tls
