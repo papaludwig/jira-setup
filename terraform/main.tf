@@ -23,14 +23,6 @@ resource "aws_security_group" "jira" {
   vpc_id      = var.vpc_id
 
   ingress {
-    description = "SSH access"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = [var.allowed_ssh_cidr]
-  }
-
-  ingress {
     description = "HTTPS access"
     from_port   = 443
     to_port     = 443
@@ -83,7 +75,6 @@ resource "aws_instance" "jira" {
   instance_type          = var.instance_type
   subnet_id              = var.subnet_id
   associate_public_ip_address = false
-  key_name               = var.ssh_key_name
   iam_instance_profile   = aws_iam_instance_profile.jira.name
   vpc_security_group_ids = [aws_security_group.jira.id]
 
@@ -123,6 +114,6 @@ output "ansible_inventory" {
   description = "INI formatted single-host inventory for Ansible"
   value       = <<EOT
 [jira]
-${aws_eip_association.jira.public_ip} ansible_user=${var.ansible_user}
+${aws_instance.jira.id} ansible_connection=amazon.aws.aws_ssm ansible_user=${var.ansible_user} ansible_aws_ssm_region=${var.region}
 EOT
 }

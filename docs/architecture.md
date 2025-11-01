@@ -6,11 +6,11 @@ This repository provisions a single-node Jira Data Center demo system using Terr
 
 1. `scripts/bootstrap.sh` orchestrates Terraform and Ansible.
 2. Terraform creates:
-   - Security group permitting SSH (restricted) and HTTPS (global).
+   - Security group permitting HTTPS (global).
    - IAM instance profile with SSM access.
    - Amazon Linux 2023 EC2 instance sized for Jira demos.
    - Elastic IP association to provide a stable public endpoint.
-3. User data adds an Ansible SSH user and ensures the SSM agent runs.
+3. User data adds an Ansible control user and ensures the SSM agent runs.
 4. Ansible playbook installs prerequisites and configures services:
    - `common` role prepares the OS, service user, and directories.
    - `java` role installs Amazon Corretto 11.

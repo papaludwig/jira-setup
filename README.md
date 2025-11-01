@@ -18,7 +18,7 @@ Run from an environment with:
 - AWS credentials allowing EC2, IAM, and EIP association in the target account.
 - Terraform ≥ 1.6 and Ansible ≥ 2.15 installed (AWS CloudShell already includes both).
 - Jira download URL, database password, and TLS materials accessible as environment variables.
-- The `community.postgresql` and `community.general` Ansible collections (`ansible-galaxy collection install community.postgresql community.general`).
+- The `amazon.aws`, `community.postgresql`, and `community.general` Ansible collections (`ansible-galaxy collection install amazon.aws community.postgresql community.general`).
 
 ## Getting the Repository in AWS CloudShell
 
@@ -33,7 +33,7 @@ Replace `jira-setup-main` with the extracted directory name if the default branc
 
 ## Quick Start
 
-1. Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars` and fill in the AWS-specific values (subnet ID, Elastic IP allocation, SSH key, etc.).
+1. Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars` and fill in the AWS-specific values (VPC, subnet, Elastic IP allocation, sizing, etc.).
 2. Export required secrets in the shell that will run the automation:
 
    ```bash
@@ -49,7 +49,7 @@ Replace `jira-setup-main` with the extracted directory name if the default branc
    ./scripts/bootstrap.sh --auto-approve
    ```
 
-   The script runs `terraform init/apply`, captures the generated inventory, and applies `ansible/playbooks/site.yml`.
+   The script runs `terraform init/apply`, captures the generated inventory, and applies `ansible/playbooks/site.yml`. Ansible connects to the instance through AWS Systems Manager Session Manager rather than SSH, so no key pair or port 22 ingress is required.
 
 4. After the play completes, browse to `https://<elastic-ip-or-dns>/` and perform the Jira setup wizard. Capture an AMI if you want a reusable snapshot.
 
