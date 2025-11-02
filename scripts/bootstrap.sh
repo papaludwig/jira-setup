@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 BIN_DIR="${PROJECT_ROOT}/.bin"
+PYTHON_USER_BASE="${PROJECT_ROOT}/.python"
 TF_DIR="${PROJECT_ROOT}/terraform"
 ANSIBLE_DIR="${PROJECT_ROOT}/ansible"
 TF_VARS_FILE="${TF_DIR}/terraform.tfvars"
@@ -11,7 +12,9 @@ AUTO_APPROVE=false
 DEFAULT_TF_VERSION="1.6.6"
 
 mkdir -p "${BIN_DIR}"
+mkdir -p "${PYTHON_USER_BASE}/bin"
 export PATH="${BIN_DIR}:${PATH}"
+export PATH="${PYTHON_USER_BASE}/bin:${PATH}"
 
 ensure_terraform() {
   if command -v terraform >/dev/null 2>&1; then
@@ -78,6 +81,35 @@ ensure_terraform() {
   echo "Installed Terraform ${version} to ${BIN_DIR}/terraform" >&2
 }
 
+ensure_ansible() {
+  if command -v ansible-playbook >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Missing dependency for automatic Ansible install: python3" >&2
+    return 1
+  fi
+
+  if ! python3 -m pip --version >/dev/null 2>&1; then
+    if ! python3 -m ensurepip --upgrade >/dev/null 2>&1; then
+      echo "pip for python3 is required to install Ansible automatically." >&2
+      return 1
+    fi
+  fi
+
+  echo "Ansible not found in PATH; installing via pip..." >&2
+  if ! PYTHONUSERBASE="${PYTHON_USER_BASE}" python3 -m pip install --user --upgrade 'ansible-core>=2.15,<2.16' >/dev/null; then
+    echo "Failed to install Ansible via pip" >&2
+    return 1
+  fi
+
+  if ! command -v ansible-playbook >/dev/null 2>&1; then
+    echo "Ansible installation completed but ansible-playbook is still not in PATH" >&2
+    return 1
+  fi
+}
+
 usage() {
   cat <<USAGE
 Usage: $(basename "$0") [options]
@@ -129,6 +161,11 @@ fi
 
 if ! ensure_terraform; then
   echo "Terraform is required but could not be installed automatically." >&2
+  exit 1
+fi
+
+if ! ensure_ansible; then
+  echo "Ansible is required but could not be installed automatically." >&2
   exit 1
 fi
 
