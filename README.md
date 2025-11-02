@@ -75,3 +75,15 @@ Whenever you renew the Let’s Encrypt wildcard certificate, update the SecureSt
 The script defaults to reading the placeholder files and updating `/demo/jira/cert` and `/demo/jira/key`, matching what `bootstrap.sh` expects when exporting `JIRA_TLS_CERT_B64` and `JIRA_TLS_KEY_B64`. Pass the `--cert-path`, `--key-path`, `--cert-parameter`, or `--key-parameter` flags if you need to override any of the defaults.
 
 Passing `--truncate-after-upload` clears the PEM files once the parameters are updated so sensitive material is not left behind in your AWS Shell environment. Omit the flag if you prefer to retain the files locally after the upload completes.
+
+## Managing the Jira Database Password Parameter
+
+Store the Jira PostgreSQL password in Parameter Store so Terraform and Ansible can fetch it without hard-coding credentials. Use the helper script below to create or rotate the SecureString parameter:
+
+```bash
+./scripts/update_db_password.sh
+```
+
+The script defaults to updating `/demo/jira/db_password`, matching the value the bootstrap process reads when exporting `JIRA_DB_PASSWORD`. Provide `--parameter` to target an alternate path. If you already have the password in a file, pass `--password-file /path/to/secret.txt`; otherwise the script will prompt for the value (input is hidden and requires confirmation). You can also supply `--password` directly, though piping from a secure source is recommended if you avoid the interactive prompt.
+
+Run the script whenever you need to rotate the database password. After updating the parameter, re-export `JIRA_DB_PASSWORD` in any shell sessions that will invoke `scripts/bootstrap.sh` so the new credential is used.
