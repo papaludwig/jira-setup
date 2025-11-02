@@ -4,9 +4,6 @@ description: Run Ansible on a stack-managed EC2 instance
 parameters:
   StackName:
     type: String
-  Region:
-    type: String
-    default: "{{ global:REGION }}"
   AnsibleS3Bucket:
     type: String
   AnsibleS3Key:
@@ -29,7 +26,6 @@ mainSteps:
     inputs:
       Service: cloudformation
       Api: DescribeStacks
-      AwsRegion: '{{ Region }}'
       StackName: '{{ StackName }}'
 
   - name: ExtractInstance
@@ -84,7 +80,6 @@ mainSteps:
     inputs:
       Service: ssm
       Api: SendCommand
-      AwsRegion: '{{ Region }}'
       DocumentName: AWS-RunAnsiblePlaybook
       InstanceIds:
         - '{{ ExtractInstance.InstanceId }}'
@@ -105,7 +100,6 @@ mainSteps:
     inputs:
       Service: ssm
       Api: GetCommandInvocation
-      AwsRegion: '{{ Region }}'
       CommandId: '{{ RunAnsible.CommandId }}'
       InstanceId: '{{ ExtractInstance.InstanceId }}'
       PropertySelector: '$.Status'
