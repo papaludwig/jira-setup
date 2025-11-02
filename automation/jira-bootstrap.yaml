@@ -127,14 +127,14 @@ mainSteps:
                 'InstanceId': str(event['instance_id']),
                 'CommandId': str(event['command_id']),
             }
-      InputPayload:
-        instance_id: '{{ ExtractInstance.Payload.InstanceId }}'
-        command_id: '{{ RunAnsible.Command.CommandId }}'
+    InputPayload:
+      instance_id: '{{ ExtractInstance.InstanceId }}'
+      command_id: '{{ RunAnsible.Command.CommandId }}'
 
 outputs:
   - Name: InstanceId
-    Selector: '$.CollectOutputs.Payload.InstanceId'
+    Selector: '$.CollectOutputs.InstanceId'
     Type: String
   - Name: CommandId
-    Selector: '$.CollectOutputs.Payload.CommandId'
+    Selector: '$.CollectOutputs.CommandId'
     Type: String
