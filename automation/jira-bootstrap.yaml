@@ -133,8 +133,9 @@ mainSteps:
 
 outputs:
   - Name: InstanceId
-    Selector: '$.CollectOutputs.InstanceId'
+    Selector: '$.CollectOutputs.Payload.InstanceId'
     Type: String
   - Name: CommandId
-    Selector: '$.CollectOutputs.CommandId'
+    Selector: '$.CollectOutputs.Payload.CommandId'
     Type: String
+
