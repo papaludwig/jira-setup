@@ -37,7 +37,7 @@ Replace `jira-setup-main` with the extracted directory name if the default branc
 2. Export required secrets in the shell that will run the automation:
 
    ```bash
-   export JIRA_TARBALL_URL="https://downloads.atlassian.com/software/jira/downloads/atlassian-jira-software-10.1.0.tar.gz"
+   export JIRA_TARBALL_URL="https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-software-10.7.4.tar.gz"
    export JIRA_DB_PASSWORD="$(aws ssm get-parameter --name /demo/jira/db_password --with-decryption --query Parameter.Value --output text)"
    export JIRA_TLS_CERT_B64="$(aws ssm get-parameter --name /demo/jira/cert --with-decryption --query Parameter.Value --output text)"
    export JIRA_TLS_KEY_B64="$(aws ssm get-parameter --name /demo/jira/key --with-decryption --query Parameter.Value --output text)"
