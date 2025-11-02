@@ -91,7 +91,7 @@ mainSteps:
       Region: "{{ Region }}"
       DocumentName: AWS-RunAnsiblePlaybook
       InstanceIds:
-        - "{{ ExtractInstance.InstanceId }}"
+        - "{{ ExtractInstance.Payload.InstanceId }}"
       Parameters:
         SourceType:
           - S3
@@ -112,7 +112,7 @@ mainSteps:
       Api: GetCommandInvocation
       Region: '{{ Region }}'
       CommandId: '{{ RunAnsible.Command.CommandId }}'
-      InstanceId: '{{ ExtractInstance.InstanceId }}'
+      InstanceId: '{{ ExtractInstance.Payload.InstanceId }}'
       PropertySelector: '$.Status'
       DesiredValues:
         - Success
