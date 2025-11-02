@@ -1,0 +1,128 @@
+---
+description: >-
+  Orchestrates Jira demo configuration by locating the CloudFormation-managed EC2
+  instance and running the Ansible playbook via AWS Systems Manager.
+schemaVersion: '0.3'
+parameters:
+  StackName:
+    type: String
+    description: Name of the CloudFormation stack that created the Jira instance.
+  Region:
+    type: String
+    default: '{{ global:REGION }}'
+    description: AWS region that hosts the CloudFormation stack and EC2 instance.
+  AnsibleS3Bucket:
+    type: String
+    description: S3 bucket containing the Ansible playbook bundle zip file.
+  AnsibleS3Key:
+    type: String
+    description: Object key for the Ansible bundle within the S3 bucket.
+  AnsibleUser:
+    type: String
+    default: ansible
+    description: Username created by CloudFormation for automation access.
+  JiraDownloadUrl:
+    type: String
+    description: HTTPS URL to the Jira tarball.
+  JiraDbPassword:
+    type: String
+    description: Password for the Jira PostgreSQL database user.
+  JiraTlsCertB64:
+    type: String
+    description: Base64-encoded TLS certificate chain for nginx termination.
+  JiraTlsKeyB64:
+    type: String
+    description: Base64-encoded TLS private key that pairs with the provided certificate.
+
+mainSteps:
+  - name: DescribeStack
+    action: aws:executeAwsApi
+    inputs:
+      Service: cloudformation
+      Api: DescribeStacks
+      Region: '{{ Region }}'
+      StackName: '{{ StackName }}'
+
+  - name: ExtractInstance
+    action: aws:executeScript
+    inputs:
+      Runtime: python3.8
+      Handler: get_instance
+      InputPayload:
+        stack: '{{ DescribeStack.Stacks[0] }}'
+    script: |
+      def get_instance(event, _):
+          outputs = event.get('stack', {}).get('Outputs', [])
+          instance_id = None
+          for output in outputs:
+              if output.get('OutputKey') == 'InstanceId':
+                  instance_id = output.get('OutputValue')
+                  break
+          if not instance_id:
+              raise ValueError('CloudFormation stack does not expose an InstanceId output.')
+          return {'InstanceId': instance_id}
+
+  - name: BuildExtraVars
+    action: aws:executeScript
+    inputs:
+      Runtime: python3.8
+      Handler: build_vars
+      InputPayload:
+        jira_download_url: '{{ JiraDownloadUrl }}'
+        jira_db_password: '{{ JiraDbPassword }}'
+        jira_tls_cert_b64: '{{ JiraTlsCertB64 }}'
+        jira_tls_key_b64: '{{ JiraTlsKeyB64 }}'
+        ansible_user: '{{ AnsibleUser }}'
+    script: |
+      import json
+
+      def build_vars(event, _):
+          extra_vars = {
+              'jira_download_url': event['jira_download_url'],
+              'jira_db_password': event['jira_db_password'],
+              'jira_tls_cert_b64': event['jira_tls_cert_b64'],
+              'jira_tls_key_b64': event['jira_tls_key_b64'],
+              'ansible_user': event['ansible_user'],
+          }
+          return {'ExtraVars': json.dumps(extra_vars)}
+
+  - name: RunAnsible
+    action: aws:executeAwsApi
+    inputs:
+      Service: ssm
+      Api: SendCommand
+      Region: '{{ Region }}'
+      DocumentName: AWS-RunAnsiblePlaybook
+      InstanceIds:
+        - '{{ ExtractInstance.InstanceId }}'
+      Parameters:
+        SourceType:
+          - S3
+        SourceInfo:
+          - '{"path":"https://s3.amazonaws.com/{{ AnsibleS3Bucket }}/{{ AnsibleS3Key }}"}'
+        InstallDependencies:
+          - 'True'
+        PlaybookFile:
+          - playbooks/site.yml
+        InventoryFile:
+          - inventory/hosts.ini
+        ExtraVariables:
+          - '{{ BuildExtraVars.ExtraVars }}'
+
+  - name: WaitForCommand
+    action: aws:waitForAwsResourceProperty
+    inputs:
+      Service: ssm
+      Api: GetCommandInvocation
+      Region: '{{ Region }}'
+      CommandId: '{{ RunAnsible.Command.CommandId }}'
+      InstanceId: '{{ ExtractInstance.InstanceId }}'
+      PropertySelector: $.Status
+      DesiredValues:
+        - Success
+
+outputs:
+  - name: InstanceId
+    selector: '{{ ExtractInstance.InstanceId }}'
+  - name: CommandId
+    selector: '{{ RunAnsible.Command.CommandId }}'

@@ -1,145 +1,97 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-BIN_DIR="${PROJECT_ROOT}/.bin"
-PYTHON_USER_BASE="${PROJECT_ROOT}/.python"
-TF_DIR="${PROJECT_ROOT}/terraform"
-ANSIBLE_DIR="${PROJECT_ROOT}/ansible"
-TF_VARS_FILE="${TF_DIR}/terraform.tfvars"
-INVENTORY_FILE="${ANSIBLE_DIR}/inventory.ini"
-AUTO_APPROVE=false
-DEFAULT_TF_VERSION="1.6.6"
-
-mkdir -p "${BIN_DIR}"
-mkdir -p "${PYTHON_USER_BASE}/bin"
-export PATH="${BIN_DIR}:${PATH}"
-export PATH="${PYTHON_USER_BASE}/bin:${PATH}"
-
-ensure_terraform() {
-  if command -v terraform >/dev/null 2>&1; then
-    return 0
-  fi
-
-  local version os arch url tmpdir
-  version="${TF_VERSION:-${DEFAULT_TF_VERSION}}"
-
-  case "$(uname -s)" in
-    Linux)
-      os="linux"
-      ;;
-    Darwin)
-      os="darwin"
-      ;;
-    *)
-      echo "Unsupported operating system for automatic Terraform install: $(uname -s)" >&2
-      return 1
-      ;;
-  esac
-
-  case "$(uname -m)" in
-    x86_64|amd64)
-      arch="amd64"
-      ;;
-    arm64|aarch64)
-      arch="arm64"
-      ;;
-    *)
-      echo "Unsupported architecture for automatic Terraform install: $(uname -m)" >&2
-      return 1
-      ;;
-  esac
-
-  for dep in curl unzip; do
-    if ! command -v "${dep}" >/dev/null 2>&1; then
-      echo "Missing dependency for automatic Terraform install: ${dep}" >&2
-      return 1
-    fi
-  done
-
-  url="https://releases.hashicorp.com/terraform/${version}/terraform_${version}_${os}_${arch}.zip"
-  tmpdir=$(mktemp -d)
-  trap 'rm -rf "${tmpdir}"' RETURN
-
-  echo "Terraform not found in PATH; downloading ${version}..." >&2
-
-  if ! curl -fsSL "${url}" -o "${tmpdir}/terraform.zip"; then
-    echo "Failed to download Terraform from ${url}" >&2
-    return 1
-  fi
-
-  if ! unzip -q "${tmpdir}/terraform.zip" -d "${tmpdir}"; then
-    echo "Failed to extract Terraform archive" >&2
-    return 1
-  fi
-
-  mv "${tmpdir}/terraform" "${BIN_DIR}/terraform"
-  chmod +x "${BIN_DIR}/terraform"
-  trap - RETURN
-  rm -rf "${tmpdir}"
-
-  echo "Installed Terraform ${version} to ${BIN_DIR}/terraform" >&2
-}
-
-ensure_ansible() {
-  if command -v ansible-playbook >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "Missing dependency for automatic Ansible install: python3" >&2
-    return 1
-  fi
-
-  if ! python3 -m pip --version >/dev/null 2>&1; then
-    if ! python3 -m ensurepip --upgrade >/dev/null 2>&1; then
-      echo "pip for python3 is required to install Ansible automatically." >&2
-      return 1
-    fi
-  fi
-
-  echo "Ansible not found in PATH; installing via pip..." >&2
-  if ! PYTHONUSERBASE="${PYTHON_USER_BASE}" python3 -m pip install --user --upgrade 'ansible-core>=2.15,<2.16' >/dev/null; then
-    echo "Failed to install Ansible via pip" >&2
-    return 1
-  fi
-
-  if ! command -v ansible-playbook >/dev/null 2>&1; then
-    echo "Ansible installation completed but ansible-playbook is still not in PATH" >&2
-    return 1
-  fi
-}
-
 usage() {
-  cat <<USAGE
-Usage: $(basename "$0") [options]
+  cat <<'USAGE'
+Usage: bootstrap.sh --stack-name <name> --bucket <s3-bucket> [options]
+
+Automates the CloudFormation deployment and SSM Automation run to provision and
+configure the Jira demo environment without requiring Terraform.
+
+Required environment variables:
+  JIRA_TARBALL_URL   HTTPS URL to the Jira installer tarball.
+  JIRA_DB_PASSWORD   Password for the Jira PostgreSQL user.
+  JIRA_TLS_CERT_B64  Base64-encoded TLS certificate chain for nginx.
+  JIRA_TLS_KEY_B64   Base64-encoded TLS private key matching the certificate.
 
 Options:
-  --tfvars FILE         Path to terraform.tfvars file (default: ${TF_VARS_FILE})
-  --inventory FILE      Path to write Ansible inventory (default: ${INVENTORY_FILE})
-  --auto-approve        Skip interactive Terraform approval
-  -h, --help            Show this help
-
-Environment:
-  JIRA_TARBALL_URL      Required. Jira tar.gz download URL.
-  JIRA_DB_PASSWORD      Required. Password for Jira database user.
-  JIRA_TLS_CERT_B64     Required. Base64 encoded certificate chain for TLS termination.
-  JIRA_TLS_KEY_B64      Required. Base64 encoded private key matching the certificate.
+  --stack-name VALUE         CloudFormation stack name. (required)
+  --bucket VALUE             S3 bucket that stores the Ansible bundle. (required)
+  --region VALUE             AWS region for all operations (defaults to AWS CLI config).
+  --template FILE            Path to the CloudFormation template (default: cloudformation/jira.yaml).
+  --parameter NAME=VALUE     Override/add a CloudFormation template parameter. May be repeated.
+  --deployment-id VALUE      Tag/identifier applied to resources (default: stack name).
+  --ansible-user VALUE       OS user created by CloudFormation (default: ansible).
+  --ansible-prefix VALUE     S3 key prefix for uploaded Ansible bundles (default: jira-ansible/).
+  --ansible-key VALUE        Explicit S3 object key for the Ansible bundle (overrides prefix).
+  --automation-document NAME SSM Automation document name (default: Jira-SetupBootstrap).
+  --skip-stack               Skip CloudFormation deployment (assumes stack already exists).
+  --skip-upload              Skip packaging/uploading Ansible (assumes bundle already present).
+  -h, --help                 Show this help message.
 USAGE
 }
 
+STACK_NAME=""
+S3_BUCKET=""
+REGION=""
+TEMPLATE="cloudformation/jira.yaml"
+DEPLOYMENT_ID=""
+ANSIBLE_USER="ansible"
+ANSIBLE_PREFIX="jira-ansible/"
+ANSIBLE_KEY=""
+AUTOMATION_DOCUMENT="Jira-SetupBootstrap"
+SKIP_STACK=false
+SKIP_UPLOAD=false
+PARAMETERS=()
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --tfvars)
-      TF_VARS_FILE=$2
+    --stack-name)
+      STACK_NAME="$2"
       shift 2
       ;;
-    --inventory)
-      INVENTORY_FILE=$2
+    --bucket)
+      S3_BUCKET="$2"
       shift 2
       ;;
-    --auto-approve)
-      AUTO_APPROVE=true
+    --region)
+      REGION="$2"
+      shift 2
+      ;;
+    --template)
+      TEMPLATE="$2"
+      shift 2
+      ;;
+    --parameter)
+      PARAMETERS+=("$2")
+      shift 2
+      ;;
+    --deployment-id)
+      DEPLOYMENT_ID="$2"
+      shift 2
+      ;;
+    --ansible-user)
+      ANSIBLE_USER="$2"
+      shift 2
+      ;;
+    --ansible-prefix)
+      ANSIBLE_PREFIX="$2"
+      shift 2
+      ;;
+    --ansible-key)
+      ANSIBLE_KEY="$2"
+      shift 2
+      ;;
+    --automation-document)
+      AUTOMATION_DOCUMENT="$2"
+      shift 2
+      ;;
+    --skip-stack)
+      SKIP_STACK=true
+      shift
+      ;;
+    --skip-upload)
+      SKIP_UPLOAD=true
       shift
       ;;
     -h|--help)
@@ -154,41 +106,157 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! -f ${TF_VARS_FILE} ]]; then
-  echo "Terraform variables file not found: ${TF_VARS_FILE}" >&2
+if [[ -z ${STACK_NAME} ]]; then
+  echo "--stack-name is required." >&2
+  usage >&2
   exit 1
 fi
 
-if ! ensure_terraform; then
-  echo "Terraform is required but could not be installed automatically." >&2
+if [[ -z ${S3_BUCKET} ]]; then
+  echo "--bucket is required." >&2
+  usage >&2
   exit 1
 fi
 
-if ! ensure_ansible; then
-  echo "Ansible is required but could not be installed automatically." >&2
-  exit 1
-fi
-
-for bin in terraform ansible-playbook; do
-  if ! command -v "${bin}" >/dev/null 2>&1; then
-    echo "Missing dependency: ${bin}" >&2
+for cmd in aws jq; do
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Required command not found in PATH: ${cmd}" >&2
     exit 1
   fi
 done
 
-pushd "${TF_DIR}" >/dev/null
-terraform init
-
-APPLY_ARGS=(apply)
-if [[ ${AUTO_APPROVE} == true ]]; then
-  APPLY_ARGS+=("-auto-approve")
+if [[ -z ${REGION} ]]; then
+  REGION=$(aws configure get region 2>/dev/null || true)
 fi
-APPLY_ARGS+=("-var-file=${TF_VARS_FILE}")
-terraform "${APPLY_ARGS[@]}"
 
-terraform output -raw ansible_inventory >"${INVENTORY_FILE}"
-popd >/dev/null
+if [[ -z ${REGION} ]]; then
+  echo "Unable to determine AWS region. Provide --region or configure a default." >&2
+  exit 1
+fi
 
-echo "Wrote Ansible inventory to ${INVENTORY_FILE}"
+declare -a REQUIRED_ENV=(JIRA_TARBALL_URL JIRA_DB_PASSWORD JIRA_TLS_CERT_B64 JIRA_TLS_KEY_B64)
+for var in "${REQUIRED_ENV[@]}"; do
+  if [[ -z ${!var:-} ]]; then
+    echo "Environment variable ${var} must be set." >&2
+    exit 1
+  fi
+done
 
-ansible-playbook -i "${INVENTORY_FILE}" "${ANSIBLE_DIR}/playbooks/site.yml"
+if [[ -z ${DEPLOYMENT_ID} ]]; then
+  DEPLOYMENT_ID="${STACK_NAME}"
+fi
+
+if [[ ${SKIP_UPLOAD} == true ]]; then
+  if [[ -z ${ANSIBLE_KEY} ]]; then
+    echo "Provide --ansible-key when using --skip-upload so the existing bundle can be referenced." >&2
+    exit 1
+  fi
+else
+  if [[ -z ${ANSIBLE_KEY} ]]; then
+    timestamp=$(date +%Y%m%d%H%M%S)
+    trimmed_prefix=${ANSIBLE_PREFIX%/}
+    ANSIBLE_KEY="${trimmed_prefix}/ansible-${timestamp}.zip"
+  fi
+  uploaded_key=$(./scripts/package_ansible.sh --bucket "${S3_BUCKET}" --key "${ANSIBLE_KEY}")
+  ANSIBLE_KEY="${uploaded_key}" # package script echoes the key actually used
+fi
+
+ensure_automation_document() {
+  local name="${AUTOMATION_DOCUMENT}"
+  local content="automation/jira-bootstrap.yaml"
+  if aws ssm describe-document --name "${name}" --region "${REGION}" >/dev/null 2>&1; then
+    aws ssm update-document \
+      --name "${name}" \
+      --region "${REGION}" \
+      --content "file://${content}" \
+      --document-format YAML >/dev/null
+    aws ssm update-document-default-version \
+      --name "${name}" \
+      --region "${REGION}" \
+      --document-version "\$LATEST" >/dev/null
+  else
+    aws ssm create-document \
+      --name "${name}" \
+      --region "${REGION}" \
+      --content "file://${content}" \
+      --document-type Automation \
+      --document-format YAML >/dev/null
+  fi
+}
+
+ensure_automation_document
+
+has_parameter_override() {
+  local needle="$1="
+  for param in "${PARAMETERS[@]}"; do
+    if [[ ${param} == ${needle}* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [[ ${SKIP_STACK} == false ]]; then
+  if [[ ! -f ${TEMPLATE} ]]; then
+    echo "Template not found: ${TEMPLATE}" >&2
+    exit 1
+  fi
+
+  PARAMETER_ARGS=()
+  if ! has_parameter_override "DeploymentId"; then
+    PARAMETER_ARGS+=("DeploymentId=${DEPLOYMENT_ID}")
+  fi
+  if ! has_parameter_override "AnsibleUser"; then
+    PARAMETER_ARGS+=("AnsibleUser=${ANSIBLE_USER}")
+  fi
+  if ! has_parameter_override "AnsibleArtifactBucket"; then
+    PARAMETER_ARGS+=("AnsibleArtifactBucket=${S3_BUCKET}")
+  fi
+  for param in "${PARAMETERS[@]}"; do
+    PARAMETER_ARGS+=("${param}")
+  done
+
+  CFN_CMD=(aws cloudformation deploy \
+    --stack-name "${STACK_NAME}" \
+    --template-file "${TEMPLATE}" \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --region "${REGION}")
+  if [[ ${#PARAMETER_ARGS[@]} -gt 0 ]]; then
+    CFN_CMD+=(--parameter-overrides "${PARAMETER_ARGS[@]}")
+  fi
+  "${CFN_CMD[@]}"
+fi
+
+AUTOMATION_PARAMS=$(jq -cn \
+  --arg stack "${STACK_NAME}" \
+  --arg region "${REGION}" \
+  --arg bucket "${S3_BUCKET}" \
+  --arg key "${ANSIBLE_KEY}" \
+  --arg user "${ANSIBLE_USER}" \
+  --arg download "${JIRA_TARBALL_URL}" \
+  --arg dbpw "${JIRA_DB_PASSWORD}" \
+  --arg cert "${JIRA_TLS_CERT_B64}" \
+  --arg keyb "${JIRA_TLS_KEY_B64}" \
+  '{
+    StackName: [$stack],
+    Region: [$region],
+    AnsibleS3Bucket: [$bucket],
+    AnsibleS3Key: [$key],
+    AnsibleUser: [$user],
+    JiraDownloadUrl: [$download],
+    JiraDbPassword: [$dbpw],
+    JiraTlsCertB64: [$cert],
+    JiraTlsKeyB64: [$keyb]
+  }')
+
+EXECUTION_ID=$(aws ssm start-automation-execution \
+  --document-name "${AUTOMATION_DOCUMENT}" \
+  --region "${REGION}" \
+  --parameters "${AUTOMATION_PARAMS}" \
+  --query AutomationExecutionId \
+  --output text)
+
+echo "Started Automation execution: ${EXECUTION_ID}" >&2
+echo "Ansible bundle: s3://${S3_BUCKET}/${ANSIBLE_KEY}" >&2
+
+echo "${EXECUTION_ID}"

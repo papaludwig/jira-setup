@@ -1,10 +1,12 @@
 ---
-- name: Ensure TLS certificate variables provided
+- name: Ensure TLS materials provided
   ansible.builtin.assert:
     that:
-      - lookup('env', 'JIRA_TLS_CERT_B64') | length > 0
-      - lookup('env', 'JIRA_TLS_KEY_B64') | length > 0
-    fail_msg: "Provide base64-encoded cert/key via JIRA_TLS_CERT_B64 and JIRA_TLS_KEY_B64 environment variables."
+      - jira_tls_cert_b64 is defined
+      - jira_tls_cert_b64 | length > 0
+      - jira_tls_key_b64 is defined
+      - jira_tls_key_b64 | length > 0
+    fail_msg: "Provide TLS certificate and key via jira_tls_cert_b64 and jira_tls_key_b64 variables."
 
 - name: Install nginx for TLS termination
   ansible.builtin.dnf:
@@ -14,7 +16,7 @@
 - name: Deploy TLS certificate
   ansible.builtin.copy:
     dest: /etc/pki/tls/certs/jira.pem
-    content: "{{ lookup('env', 'JIRA_TLS_CERT_B64') | b64decode }}"
+    content: "{{ jira_tls_cert_b64 | b64decode }}"
     owner: root
     group: root
     mode: "0644"
@@ -22,7 +24,7 @@
 - name: Deploy TLS private key
   ansible.builtin.copy:
     dest: /etc/pki/tls/private/jira.key
-    content: "{{ lookup('env', 'JIRA_TLS_KEY_B64') | b64decode }}"
+    content: "{{ jira_tls_key_b64 | b64decode }}"
     owner: root
     group: root
     mode: "0600"
