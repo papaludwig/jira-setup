@@ -88,17 +88,17 @@ mainSteps:
     inputs:
       Service: ssm
       Api: SendCommand
-      Region: '{{ Region }}'
+      Region: "{{ Region }}"
       DocumentName: AWS-RunAnsiblePlaybook
       InstanceIds:
-        - '{{ ExtractInstance.InstanceId }}'
+        - "{{ ExtractInstance.InstanceId }}"
       Parameters:
         SourceType:
           - S3
         SourceInfo:
           - '{"path":"https://s3.amazonaws.com/{{ AnsibleS3Bucket }}/{{ AnsibleS3Key }}"}'
         InstallDependencies:
-          - 'True'
+          - "True"
         PlaybookFile:
           - playbooks/site.yml
         InventoryFile:
