@@ -66,14 +66,12 @@ Document the validation run (timestamp, region, commit hash) in pull request not
 
 ## Refreshing TLS Materials
 
-Whenever you renew the Let’s Encrypt wildcard certificate, update the SecureString parameters so future runs deploy the new files. The helper script below base64-encodes your `fullchain.pem` and `privkey.pem` and writes them to Parameter Store:
+Whenever you renew the Let’s Encrypt wildcard certificate, update the SecureString parameters so future runs deploy the new files. Drop the refreshed PEM contents into the placeholder files at `certs/fullchain.pem` and `certs/privkey.pem` (they remain empty in Git history), then run the helper script below to base64-encode the files and write them to Parameter Store:
 
 ```bash
-./scripts/update_tls_parameters.sh \
-  --cert-path /path/to/fullchain.pem \
-  --key-path /path/to/privkey.pem \
-  --cert-parameter /demo/jira/cert \
-  --key-parameter /demo/jira/key
+./scripts/update_tls_parameters.sh --truncate-after-upload
 ```
 
-The script overwrites the existing values with the freshly encoded blobs, matching what `bootstrap.sh` expects when exporting `JIRA_TLS_CERT_B64` and `JIRA_TLS_KEY_B64`.
+The script defaults to reading the placeholder files and updating `/demo/jira/cert` and `/demo/jira/key`, matching what `bootstrap.sh` expects when exporting `JIRA_TLS_CERT_B64` and `JIRA_TLS_KEY_B64`. Pass the `--cert-path`, `--key-path`, `--cert-parameter`, or `--key-parameter` flags if you need to override any of the defaults.
+
+Passing `--truncate-after-upload` clears the PEM files once the parameters are updated so sensitive material is not left behind in your AWS Shell environment. Omit the flag if you prefer to retain the files locally after the upload completes.

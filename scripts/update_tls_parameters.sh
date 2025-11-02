@@ -3,31 +3,31 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: update_tls_parameters.sh --cert-path <fullchain.pem> --key-path <privkey.pem> \
-       --cert-parameter <ssm-parameter-name> --key-parameter <ssm-parameter-name>
+Usage: update_tls_parameters.sh [--cert-path <fullchain.pem>] [--key-path <privkey.pem>] \
+       [--cert-parameter <ssm-parameter-name>] [--key-parameter <ssm-parameter-name>] [--truncate-after-upload]
 
 Base64-encodes the provided TLS certificate and key, then stores them as SecureString
 parameters in AWS Systems Manager Parameter Store. Existing parameters are overwritten.
 
-Required arguments:
-  --cert-path         Path to the certificate chain file (e.g., fullchain.pem).
-  --key-path          Path to the private key file (e.g., privkey.pem).
-  --cert-parameter    Name of the SSM parameter to store the certificate blob.
-  --key-parameter     Name of the SSM parameter to store the key blob.
+Defaults:
+  --cert-path         certs/fullchain.pem
+  --key-path          certs/privkey.pem
+  --cert-parameter    /demo/jira/cert
+  --key-parameter     /demo/jira/key
 
-Example:
-  ./scripts/update_tls_parameters.sh \
-    --cert-path /tmp/fullchain.pem \
-    --key-path /tmp/privkey.pem \
-    --cert-parameter /demo/jira/cert \
-    --key-parameter /demo/jira/key
+Optional arguments:
+  --truncate-after-upload  Truncate the certificate and key files after successful upload.
+
+Example (using defaults):
+  ./scripts/update_tls_parameters.sh --truncate-after-upload
 EOF
 }
 
-cert_path=""
-key_path=""
-cert_parameter=""
-key_parameter=""
+cert_path="certs/fullchain.pem"
+key_path="certs/privkey.pem"
+cert_parameter="/demo/jira/cert"
+key_parameter="/demo/jira/key"
+truncate_after_upload="false"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -47,6 +47,10 @@ while [ "$#" -gt 0 ]; do
       key_parameter="$2"
       shift 2
       ;;
+    --truncate-after-upload)
+      truncate_after_upload="true"
+      shift 1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -58,12 +62,6 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
-
-if [ -z "$cert_path" ] || [ -z "$key_path" ] || [ -z "$cert_parameter" ] || [ -z "$key_parameter" ]; then
-  echo "All arguments are required." >&2
-  usage >&2
-  exit 1
-fi
 
 if [ ! -f "$cert_path" ]; then
   echo "Certificate file not found: $cert_path" >&2
@@ -92,3 +90,9 @@ aws ssm put-parameter \
 
 echo "Updated certificate parameter: $cert_parameter"
 echo "Updated key parameter: $key_parameter"
+
+if [ "$truncate_after_upload" = "true" ]; then
+  : > "$cert_path"
+  : > "$key_path"
+  echo "Truncated source files: $cert_path, $key_path"
+fi
