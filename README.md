@@ -16,9 +16,11 @@ Automation for provisioning an AWS-hosted Jira Data Center demo environment. Ter
 Run from an environment with:
 
 - AWS credentials allowing EC2, IAM, and EIP association in the target account.
-- Terraform ≥ 1.6 and Ansible ≥ 2.15 installed (AWS CloudShell already includes both).
+- Ansible ≥ 2.15 installed (AWS CloudShell already includes it).
 - Jira download URL, database password, and TLS materials accessible as environment variables.
 - The `amazon.aws`, `community.postgresql`, and `community.general` Ansible collections (`ansible-galaxy collection install amazon.aws community.postgresql community.general`).
+
+If Terraform is not present in `PATH`, `scripts/bootstrap.sh` downloads version 1.6.6 (override with `TF_VERSION=<version>` before running the script) into `.bin/` under the project root.
 
 ## Getting the Repository in AWS CloudShell
 
@@ -30,6 +32,26 @@ cd jira-setup-main
 ```
 
 Replace `jira-setup-main` with the extracted directory name if the default branch changes. Future CloudShell sessions can simply `cd` into the persisted directory.
+
+### Keeping Your CloudShell Copy Up to Date
+
+If you followed the tarball approach above, the extracted directory is not a Git checkout. To refresh it later, remove the old directory and re-download the tarball:
+
+```bash
+rm -rf jira-setup-main
+curl -L https://github.com/papaludwig/jira-setup/archive/refs/heads/main.tar.gz | tar -xz
+```
+
+Alternatively, clone the repository so you can update in place without re-downloading everything:
+
+```bash
+git clone https://github.com/papaludwig/jira-setup.git
+cd jira-setup
+# ... work normally ...
+git pull --ff-only
+```
+
+The `git pull --ff-only` command fast-forwards your CloudShell copy to match the latest default-branch commit while preserving any local work.
 
 ## Quick Start
 

@@ -2,11 +2,81 @@
 set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+BIN_DIR="${PROJECT_ROOT}/.bin"
 TF_DIR="${PROJECT_ROOT}/terraform"
 ANSIBLE_DIR="${PROJECT_ROOT}/ansible"
 TF_VARS_FILE="${TF_DIR}/terraform.tfvars"
 INVENTORY_FILE="${ANSIBLE_DIR}/inventory.ini"
 AUTO_APPROVE=false
+DEFAULT_TF_VERSION="1.6.6"
+
+mkdir -p "${BIN_DIR}"
+export PATH="${BIN_DIR}:${PATH}"
+
+ensure_terraform() {
+  if command -v terraform >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local version os arch url tmpdir
+  version="${TF_VERSION:-${DEFAULT_TF_VERSION}}"
+
+  case "$(uname -s)" in
+    Linux)
+      os="linux"
+      ;;
+    Darwin)
+      os="darwin"
+      ;;
+    *)
+      echo "Unsupported operating system for automatic Terraform install: $(uname -s)" >&2
+      return 1
+      ;;
+  esac
+
+  case "$(uname -m)" in
+    x86_64|amd64)
+      arch="amd64"
+      ;;
+    arm64|aarch64)
+      arch="arm64"
+      ;;
+    *)
+      echo "Unsupported architecture for automatic Terraform install: $(uname -m)" >&2
+      return 1
+      ;;
+  esac
+
+  for dep in curl unzip; do
+    if ! command -v "${dep}" >/dev/null 2>&1; then
+      echo "Missing dependency for automatic Terraform install: ${dep}" >&2
+      return 1
+    fi
+  done
+
+  url="https://releases.hashicorp.com/terraform/${version}/terraform_${version}_${os}_${arch}.zip"
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "${tmpdir}"' RETURN
+
+  echo "Terraform not found in PATH; downloading ${version}..." >&2
+
+  if ! curl -fsSL "${url}" -o "${tmpdir}/terraform.zip"; then
+    echo "Failed to download Terraform from ${url}" >&2
+    return 1
+  fi
+
+  if ! unzip -q "${tmpdir}/terraform.zip" -d "${tmpdir}"; then
+    echo "Failed to extract Terraform archive" >&2
+    return 1
+  fi
+
+  mv "${tmpdir}/terraform" "${BIN_DIR}/terraform"
+  chmod +x "${BIN_DIR}/terraform"
+  trap - RETURN
+  rm -rf "${tmpdir}"
+
+  echo "Installed Terraform ${version} to ${BIN_DIR}/terraform" >&2
+}
 
 usage() {
   cat <<USAGE
@@ -54,6 +124,11 @@ done
 
 if [[ ! -f ${TF_VARS_FILE} ]]; then
   echo "Terraform variables file not found: ${TF_VARS_FILE}" >&2
+  exit 1
+fi
+
+if ! ensure_terraform; then
+  echo "Terraform is required but could not be installed automatically." >&2
   exit 1
 fi
 
