@@ -191,7 +191,8 @@ ensure_automation_document() {
         --name "${name}" \
         --region "${REGION}" \
         --content "file://${content}" \
-        --document-format YAML >/dev/null
+        --document-format YAML \
+        --document-version '$LATEST' >/dev/null
       aws_cli ssm update-document-default-version \
         --name "${name}" \
         --region "${REGION}" \
@@ -210,7 +211,8 @@ ensure_automation_document() {
         --name "${name}" \
         --region "${REGION}" \
         --content "file://${content}" \
-        --document-format YAML
+        --document-format YAML \
+        --document-version '$LATEST'
       aws_cli ssm update-document-default-version \
         --name "${name}" \
         --region "${REGION}" \
