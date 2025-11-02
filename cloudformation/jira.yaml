@@ -27,11 +27,11 @@ Parameters:
     Description: Identifier used for tagging the infrastructure resources.
   InstanceType:
     Type: String
-    Default: m6i.xlarge
+    Default: t3.xlarge
     Description: EC2 instance type sized for Jira.
   RootVolumeSize:
     Type: Number
-    Default: 100
+    Default: 40
     Description: Root EBS volume size in GiB.
   AnsibleUser:
     Type: String
