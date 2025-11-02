@@ -35,7 +35,7 @@ Run from an environment that has:
    CloudShell, `curl` works even if `git` is unavailable:
 
    ```bash
-   curl -L https://github.com/example-org/jira-setup/archive/refs/heads/main.tar.gz | tar -xz
+   curl -L https://github.com/papaludwig/jira-setup/archive/refs/heads/main.tar.gz | tar -xz
    mv jira-setup-main jira-setup
    cd jira-setup
    ```
