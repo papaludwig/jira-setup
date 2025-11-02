@@ -1,63 +1,39 @@
 # Jira Demo Setup Automation
 
-Automation for provisioning an AWS-hosted Jira Data Center demo environment. Terraform creates the infrastructure, and Ansible configures the EC2 instance with PostgreSQL, Jira, and TLS termination.
+Automation for provisioning an AWS-hosted Jira Data Center demo environment with
+CloudFormation for infrastructure and AWS Systems Manager Automation +
+Ansible for in-guest configuration. Everything can be launched from a
+browser-based environment such as AWS CloudShell without installing Terraform.
 
 ## Repository Layout
 
 | Path | Purpose |
 | --- | --- |
-| `terraform/` | Root Terraform module for the Jira instance. |
-| `ansible/` | Playbooks and roles configuring the instance. |
-| `scripts/bootstrap.sh` | Orchestrates Terraform + Ansible from a single command. |
-| `docs/` | Additional design and runbook documentation. |
+| `cloudformation/` | CloudFormation templates for the core infrastructure. |
+| `automation/` | Systems Manager Automation documents used to run Ansible. |
+| `ansible/` | Playbooks and roles that configure the EC2 instance locally. |
+| `scripts/bootstrap.sh` | Orchestrates packaging, CloudFormation deploy, and Automation execution. |
+| `scripts/package_ansible.sh` | Creates/upload the Ansible bundle consumed by AWS-RunAnsiblePlaybook. |
+| `docs/` | Design notes and operational runbooks. |
 
 ## Prerequisites
 
-Run from an environment with:
+Run from an environment that has:
 
-- AWS credentials allowing EC2, IAM, and EIP association in the target account.
-- Ansible ≥ 2.15 installed (if missing, `scripts/bootstrap.sh` installs `ansible-core` into `.python/` under the project root).
-- Python 3 with `pip` available if the script needs to install Ansible automatically.
-- Jira download URL, database password, and TLS materials accessible as environment variables.
-- The `amazon.aws`, `community.postgresql`, and `community.general` Ansible collections (`ansible-galaxy collection install amazon.aws community.postgresql community.general`).
-
-If Terraform is not present in `PATH`, `scripts/bootstrap.sh` downloads version 1.6.6 (override with `TF_VERSION=<version>` before running the script) into `.bin/` under the project root.
-
-## Getting the Repository in AWS CloudShell
-
-AWS CloudShell persists the contents of your home directory across sessions, so you typically only need to download the code once per region. If you start in a brand-new environment—or want to refresh to the latest commit—use `curl` to grab the repository tarball and extract it:
-
-```bash
-curl -L https://github.com/papaludwig/jira-setup/archive/refs/heads/main.tar.gz | tar -xz
-cd jira-setup-main
-```
-
-Replace `jira-setup-main` with the extracted directory name if the default branch changes. Future CloudShell sessions can simply `cd` into the persisted directory.
-
-### Keeping Your CloudShell Copy Up to Date
-
-If you followed the tarball approach above, the extracted directory is not a Git checkout. To refresh it later, remove the old directory and re-download the tarball:
-
-```bash
-rm -rf jira-setup-main
-curl -L https://github.com/papaludwig/jira-setup/archive/refs/heads/main.tar.gz | tar -xz
-```
-
-Alternatively, clone the repository so you can update in place without re-downloading everything:
-
-```bash
-git clone https://github.com/papaludwig/jira-setup.git
-cd jira-setup
-# ... work normally ...
-git pull --ff-only
-```
-
-The `git pull --ff-only` command fast-forwards your CloudShell copy to match the latest default-branch commit while preserving any local work.
+- AWS CLI v2 configured with credentials that can manage EC2, IAM, S3, SSM, and CloudFormation resources in the target account.
+- `jq`, `zip`, and `rsync` installed (CloudShell includes them by default).
+- An S3 bucket to store the packaged Ansible bundle.
+- Pre-created networking primitives referenced by the stack: VPC, subnet, and Elastic IP allocation.
+- Jira artifacts and secrets available:
+  - Jira tarball download URL.
+  - Jira PostgreSQL password (SecureString in Parameter Store recommended).
+  - Base64-encoded TLS certificate chain and key.
 
 ## Quick Start
 
-1. Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars` and fill in the AWS-specific values (VPC, subnet, Elastic IP allocation, sizing, etc.).
-2. Export required secrets in the shell that will run the automation:
+1. Clone or download this repository in your execution environment.
+2. Export the required secrets in the shell that will run the automation (these
+   examples pull from Parameter Store):
 
    ```bash
    export JIRA_TARBALL_URL="https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-software-10.7.4.tar.gz"
@@ -66,47 +42,127 @@ The `git pull --ff-only` command fast-forwards your CloudShell copy to match the
    export JIRA_TLS_KEY_B64="$(aws ssm get-parameter --name /demo/jira/key --with-decryption --query Parameter.Value --output text)"
    ```
 
-3. From the repository root, execute the bootstrap script:
+3. Run the bootstrap script, supplying the CloudFormation parameters that vary
+   per environment. The example below assumes a VPC, subnet, and Elastic IP are
+   already provisioned and that `demo-artifacts` is the S3 bucket where the
+   Ansible bundle should reside:
 
    ```bash
-   ./scripts/bootstrap.sh --auto-approve
+   ./scripts/bootstrap.sh \
+     --stack-name jira-demo \
+     --bucket demo-artifacts \
+     --region us-west-2 \
+     --parameter VpcId=vpc-0123456789abcdef0 \
+     --parameter SubnetId=subnet-0123456789abcdef0 \
+     --parameter ElasticIpAllocationId=eipalloc-0123456789abcdef0
    ```
 
-   The script runs `terraform init/apply`, captures the generated inventory, and applies `ansible/playbooks/site.yml`. Ansible connects to the instance through AWS Systems Manager Session Manager rather than SSH, so no key pair or port 22 ingress is required.
+   The script performs the following:
 
-4. After the play completes, browse to `https://<elastic-ip-or-dns>/` and perform the Jira setup wizard. Capture an AMI if you want a reusable snapshot.
+   - Packages `ansible/` into a zip archive and uploads it to the specified S3 bucket.
+   - Creates or updates the `Jira-SetupBootstrap` Automation document in Systems Manager.
+   - Deploys/updates the CloudFormation stack defined in `cloudformation/jira.yaml`.
+   - Starts the Automation execution, which downloads the bundle to the EC2
+     instance and runs `ansible/playbooks/site.yml` locally via `AWS-RunAnsiblePlaybook`.
+
+4. Monitor the Automation execution from the Systems Manager console (Automation
+   section) or by polling with the AWS CLI:
+
+   ```bash
+   aws ssm get-automation-execution \
+     --automation-execution-id <execution-id-from-bootstrap> \
+     --region us-west-2 \
+     --query 'AutomationExecution.{Status:AutomationExecutionStatus,Outputs:Outputs}'
+   ```
+
+5. When the Automation run reports `Success`, browse to `https://<elastic-ip>/`
+   to complete the Jira setup wizard. Capture an AMI if you need a reusable
+   snapshot for future classrooms or demos.
+
+## CloudFormation Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `VpcId` | Target VPC for the Jira instance. |
+| `SubnetId` | Subnet inside the VPC where the instance launches. |
+| `ElasticIpAllocationId` | Allocation ID of the Elastic IP that should be attached. |
+| `AnsibleArtifactBucket` | S3 bucket that hosts the Ansible bundle (populated automatically by `bootstrap.sh`). |
+| `NamePrefix` | Prefix applied to named AWS resources (default `jira-demo`). |
+| `DeploymentId` | Tag used for resource grouping (defaults to stack name). |
+| `InstanceType` | EC2 instance size (default `m6i.xlarge`). |
+| `RootVolumeSize` | Root EBS volume size in GiB (default `100`). |
+| `AnsibleUser` | OS user created for automation tasks (default `ansible`). |
+| `AmiParameterName` | SSM parameter that resolves to the desired Amazon Linux AMI. |
+| `AllowHttpsCidr` | CIDR allowed to reach Jira over HTTPS (default `0.0.0.0/0`). |
+
+Most parameters have reasonable defaults; only the networking resources and EIP
+allocation are mandatory overrides.
+
+## Systems Manager Automation
+
+The Automation document (`automation/jira-bootstrap.yaml`) looks up the EC2
+instance created by CloudFormation, builds a JSON blob of Ansible extra
+variables, and invokes the managed `AWS-RunAnsiblePlaybook` document against the
+instance. The playbook runs **on the instance itself** using a local inventory,
+so no control node is required and CloudShell disk usage remains minimal.
+
+You can register or update the document manually if preferred:
+
+```bash
+aws ssm create-document \
+  --name Jira-SetupBootstrap \
+  --document-type Automation \
+  --document-format YAML \
+  --content file://automation/jira-bootstrap.yaml
+```
+
+If the document already exists, switch to `aws ssm update-document` followed by
+`aws ssm update-document-default-version`.
 
 ## Manual Validation
 
-Because real AWS infrastructure is required, automated testing is not available in this repository. Validate changes by running the bootstrap workflow in an isolated AWS account and confirming:
+Because the workflow targets live AWS resources, automated tests are not
+included. Validate changes by running the bootstrap process in a non-production
+AWS account and confirming:
 
-1. Terraform completes without error and outputs the inventory file.
-2. Ansible finishes successfully and reports changed tasks for Jira, PostgreSQL, and TLS roles.
-3. Jira responds with a 200/302 over HTTPS on port 443.
-4. Optional: Stop Jira and create an AMI for future reuse.
+1. The CloudFormation stack reaches `CREATE_COMPLETE` or `UPDATE_COMPLETE`.
+2. The Automation execution finishes with status `Success`.
+3. Jira responds with HTTPS on port 443 through the attached Elastic IP.
+4. Optional: capture an AMI for reuse once Jira is configured.
 
-Document the validation run (timestamp, region, commit hash) in pull request notes to keep the history auditable.
+Document validation runs (date, region, execution ID) in pull request notes to
+maintain traceability.
 
-## Refreshing TLS Materials
+## Managing Secrets
 
-Whenever you renew the Let’s Encrypt wildcard certificate, update the SecureString parameters so future runs deploy the new files. Drop the refreshed PEM contents into the placeholder files at `certs/fullchain.pem` and `certs/privkey.pem` (they remain empty in Git history), then run the helper script below to base64-encode the files and write them to Parameter Store:
+Use the helper scripts under `scripts/` to maintain secrets in Parameter Store:
 
-```bash
-./scripts/update_tls_parameters.sh --truncate-after-upload
-```
+- `./scripts/update_db_password.sh` – create or rotate the Jira database password.
+- `./scripts/update_tls_parameters.sh` – upload refreshed TLS certificate and key
+  material and optionally wipe local files afterward.
 
-The script defaults to reading the placeholder files and updating `/demo/jira/cert` and `/demo/jira/key`, matching what `bootstrap.sh` expects when exporting `JIRA_TLS_CERT_B64` and `JIRA_TLS_KEY_B64`. Pass the `--cert-path`, `--key-path`, `--cert-parameter`, or `--key-parameter` flags if you need to override any of the defaults.
+Export the retrieved values into environment variables immediately before
+running `bootstrap.sh`, or pass Parameter Store lookups inline (e.g.
+`export JIRA_DB_PASSWORD="$(aws ssm get-parameter ...)"`).
 
-Passing `--truncate-after-upload` clears the PEM files once the parameters are updated so sensitive material is not left behind in your AWS Shell environment. Omit the flag if you prefer to retain the files locally after the upload completes.
+## Cleaning Up
 
-## Managing the Jira Database Password Parameter
+To tear down the environment:
 
-Store the Jira PostgreSQL password in Parameter Store so Terraform and Ansible can fetch it without hard-coding credentials. Use the helper script below to create or rotate the SecureString parameter:
+1. Stop any running Automation executions.
+2. Delete the CloudFormation stack:
 
-```bash
-./scripts/update_db_password.sh
-```
+   ```bash
+   aws cloudformation delete-stack --stack-name jira-demo --region us-west-2
+   aws cloudformation wait stack-delete-complete --stack-name jira-demo --region us-west-2
+   ```
 
-The script defaults to updating `/demo/jira/db_password`, matching the value the bootstrap process reads when exporting `JIRA_DB_PASSWORD`. Provide `--parameter` to target an alternate path. If you already have the password in a file, pass `--password-file /path/to/secret.txt`; otherwise the script will prompt for the value (input is hidden and requires confirmation). You can also supply `--password` directly, though piping from a secure source is recommended if you avoid the interactive prompt.
+3. Remove the uploaded Ansible bundle from S3 if it is no longer needed.
+4. Optionally delete the `Jira-SetupBootstrap` Automation document:
 
-Run the script whenever you need to rotate the database password. After updating the parameter, re-export `JIRA_DB_PASSWORD` in any shell sessions that will invoke `scripts/bootstrap.sh` so the new credential is used.
+   ```bash
+   aws ssm delete-document --name Jira-SetupBootstrap --region us-west-2
+   ```
+
+This returns the account to its pre-deployment state while preserving reusable
+artifacts such as the S3 bucket and Parameter Store secrets.

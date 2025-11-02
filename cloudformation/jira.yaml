@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Provision the AWS infrastructure required for the Jira demo node. Creates an
+  Amazon Linux 2023 instance with SSM access, security group, IAM instance
+  profile, and Elastic IP association.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC where the Jira instance will run.
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet for the Jira instance (must match the VPC).
+  ElasticIpAllocationId:
+    Type: String
+    Description: Allocation ID of the pre-provisioned Elastic IP to attach to the instance.
+  AnsibleArtifactBucket:
+    Type: String
+    Description: S3 bucket name that stores the Ansible playbook bundle.
+  NamePrefix:
+    Type: String
+    Default: jira-demo
+    Description: Prefix applied to named AWS resources.
+  DeploymentId:
+    Type: String
+    Default: jira-demo
+    Description: Identifier used for tagging the infrastructure resources.
+  InstanceType:
+    Type: String
+    Default: m6i.xlarge
+    Description: EC2 instance type sized for Jira.
+  RootVolumeSize:
+    Type: Number
+    Default: 100
+    Description: Root EBS volume size in GiB.
+  AnsibleUser:
+    Type: String
+    Default: ansible
+    Description: OS user created for automation tasks and sudo access.
+  AmiParameterName:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
+    Description: SSM public parameter that resolves to the Amazon Linux 2023 AMI.
+  AllowHttpsCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR block permitted to reach Jira over HTTPS.
+
+Resources:
+  JiraSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Jira HTTPS access
+      GroupName: !Sub '${NamePrefix}-jira-sg'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - CidrIp: !Ref AllowHttpsCidr
+          Description: HTTPS access
+          FromPort: 443
+          ToPort: 443
+          IpProtocol: tcp
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow outbound traffic
+          IpProtocol: -1
+      Tags:
+        - Key: Name
+          Value: !Sub '${NamePrefix}-jira-sg'
+        - Key: jira:deployment
+          Value: !Ref DeploymentId
+
+  JiraInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${NamePrefix}-jira-ec2'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: JiraArtifactReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${AnsibleArtifactBucket}/*'
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${AnsibleArtifactBucket}'
+      Tags:
+        - Key: jira:deployment
+          Value: !Ref DeploymentId
+
+  JiraInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${NamePrefix}-jira-profile'
+      Roles:
+        - !Ref JiraInstanceRole
+
+  JiraInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref JiraInstanceProfile
+      ImageId: !Ref AmiParameterName
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref JiraSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref RootVolumeSize
+            VolumeType: gp3
+            Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${NamePrefix}-jira'
+        - Key: jira:deployment
+          Value: !Ref DeploymentId
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            if ! id ${AnsibleUser} >/dev/null 2>&1; then
+              useradd --create-home --shell /bin/bash ${AnsibleUser}
+            fi
+            usermod -aG wheel ${AnsibleUser} || usermod -aG adm ${AnsibleUser}
+            echo "${AnsibleUser} ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/${AnsibleUser}
+            chmod 440 /etc/sudoers.d/${AnsibleUser}
+
+            systemctl enable --now amazon-ssm-agent
+
+  JiraEipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !Ref ElasticIpAllocationId
+      InstanceId: !Ref JiraInstance
+
+Outputs:
+  InstanceId:
+    Description: ID of the Jira EC2 instance.
+    Value: !Ref JiraInstance
+  PrivateIp:
+    Description: Private IP of the Jira instance.
+    Value: !GetAtt JiraInstance.PrivateIp
+  PublicIp:
+    Description: Elastic IP address attached to the Jira instance.
+    Value: !GetAtt JiraEipAssociation.PublicIp
+  SecurityGroupId:
+    Description: Security group ID securing Jira ingress.
+    Value: !Ref JiraSecurityGroup
+  InstanceProfileName:
+    Description: IAM instance profile assigned to the Jira instance.
+    Value: !Ref JiraInstanceProfile

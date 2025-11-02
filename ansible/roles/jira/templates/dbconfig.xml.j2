@@ -1,15 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <jira-database-config>
-  <name>defaultDS</name>
-  <database-type>postgres72</database-type>
-  <jdbc-datasource>
-    <url>jdbc:postgresql://localhost:5432/jira</url>
-    <driver-class>org.postgresql.Driver</driver-class>
-    <username>jira</username>
-    <password>{{ lookup('env', 'JIRA_DB_PASSWORD') }}</password>
-    <validation-query>select 1</validation-query>
-    <pool-min-size>10</pool-min-size>
-    <pool-max-size>50</pool-max-size>
-    <pool-max-wait>30000</pool-max-wait>
-  </jdbc-datasource>
+    <name>defaultDS</name>
+    <delegator-name>delegator</delegator-name>
+    <database-type>postgres72</database-type>
+    <schema-name>public</schema-name>
+    <jdbc-datasource>
+        <url>jdbc:postgresql://127.0.0.1:5432/jira</url>
+        <driver-class>org.postgresql.Driver</driver-class>
+        <username>jira</username>
+        <password>{{ jira_db_password }}</password>
+        <validation-query>select 1</validation-query>
+        <pool-min-size>20</pool-min-size>
+        <pool-max-size>100</pool-max-size>
+        <pool-max-wait>30000</pool-max-wait>
+        <pool-max-idle>20</pool-max-idle>
+        <pool-remove-abandoned>true</pool-remove-abandoned>
+        <pool-remove-abandoned-timeout>300</pool-remove-abandoned-timeout>
+        <pool-test-on-borrow>true</pool-test-on-borrow>
+        <pool-test-while-idle>true</pool-test-while-idle>
+        <pool-time-between-eviction-runs-millis>30000</pool-time-between-eviction-runs-millis>
+    </jdbc-datasource>
 </jira-database-config>

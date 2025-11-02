@@ -2,8 +2,9 @@
 - name: Ensure Jira download URL provided
   ansible.builtin.assert:
     that:
+      - jira_download_url is defined
       - jira_download_url | length > 0
-    fail_msg: "Set the JIRA_TARBALL_URL environment variable before running the playbook."
+    fail_msg: "Provide the Jira download URL via the jira_download_url variable."
 
 - name: Derive Jira archive basename
   ansible.builtin.set_fact:

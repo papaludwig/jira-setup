@@ -3,7 +3,7 @@
   hosts: jira
   become: true
   vars:
-    jira_download_url: "{{ lookup('env', 'JIRA_TARBALL_URL') }}"
+    ansible_user: "{{ ansible_user | default('ansible') }}"
   roles:
     - role: common
     - role: java

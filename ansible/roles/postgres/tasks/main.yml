@@ -1,4 +1,11 @@
 ---
+- name: Ensure Jira database password provided
+  ansible.builtin.assert:
+    that:
+      - jira_db_password is defined
+      - jira_db_password | length > 0
+    fail_msg: "Provide the Jira database password via the jira_db_password variable."
+
 - name: Install PostgreSQL server packages
   ansible.builtin.dnf:
     name:
@@ -35,7 +42,7 @@
 - name: Create database user for Jira
   community.postgresql.postgresql_user:
     name: jira
-    password: "{{ lookup('env', 'JIRA_DB_PASSWORD') }}"
+    password: "{{ jira_db_password }}"
     db: postgres
     login_unix_socket: /var/run/postgresql
 
