@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export AWS_PAGER=""
+
+DEBUG_PACKAGE_FLAG=${DEBUG_PACKAGE:-${DEBUG_BOOTSTRAP:-}}
+if [[ -n ${DEBUG_PACKAGE_FLAG} ]]; then
+  set -x
+fi
+
+AWS_DEBUG_ARGS=()
+QUIET_PACKAGE=true
+if [[ -n ${DEBUG_PACKAGE_FLAG} ]]; then
+  AWS_DEBUG_ARGS+=(--debug)
+  QUIET_PACKAGE=false
+fi
+
+aws_cli() {
+  aws "${AWS_DEBUG_ARGS[@]}" "$@"
+}
+
 usage() {
   cat <<'USAGE'
 Usage: package_ansible.sh --bucket <s3-bucket> [--key <object-key>] [--prefix <key-prefix>] [--output <zip-path>]
@@ -14,6 +32,10 @@ Options:
   --prefix VALUE       Prefix used to generate the object key. Defaults to 'jira-ansible/'.
   --output PATH        Optional path to also write the generated zip locally.
   -h, --help           Show this help text.
+
+Environment variables:
+  DEBUG_PACKAGE        Enable shell tracing and AWS CLI --debug output when set.
+  DEBUG_BOOTSTRAP      Also enables debug behavior when invoking via bootstrap.sh.
 
 Examples:
   ./scripts/package_ansible.sh --bucket instantbrains-demo-artifacts
@@ -85,7 +107,11 @@ fi
 tmpdir=$(mktemp -d)
 trap 'rm -rf "${tmpdir}"' EXIT
 
-rsync -a --delete ansible/ "${tmpdir}/ansible/" >/dev/null
+if [[ ${QUIET_PACKAGE} == true ]]; then
+  rsync -a --delete ansible/ "${tmpdir}/ansible/" >/dev/null
+else
+  rsync -a --delete ansible/ "${tmpdir}/ansible/"
+fi
 
 pushd "${tmpdir}/ansible" >/dev/null
 zip_path="${tmpdir}/ansible.zip"
@@ -93,7 +119,7 @@ zip -qr "${zip_path}" .
 popd >/dev/null
 
 s3_uri="s3://${bucket}/${key}"
-aws s3 cp "${zip_path}" "${s3_uri}"
+aws_cli s3 cp "${zip_path}" "${s3_uri}"
 
 echo "Uploaded Ansible bundle to ${s3_uri}" >&2
 
