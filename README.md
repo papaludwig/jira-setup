@@ -51,10 +51,10 @@ Run from an environment that has:
    ./scripts/bootstrap.sh \
      --stack-name jira-demo \
      --bucket demo-artifacts \
-     --region us-west-2 \
-     --parameter VpcId=vpc-0123456789abcdef0 \
-     --parameter SubnetId=subnet-0123456789abcdef0 \
-     --parameter ElasticIpAllocationId=eipalloc-0123456789abcdef0
+     --region us-east-1 \
+     --parameter VpcId=vpc-0e2b7d69 \
+     --parameter SubnetId=subnet-4a11f267 \
+     --parameter ElasticIpAllocationId=eipalloc-0938e39b8988b3bc5
    ```
 
    The script performs the following:
