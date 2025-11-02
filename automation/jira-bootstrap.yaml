@@ -40,52 +40,49 @@ mainSteps:
     inputs:
       Service: cloudformation
       Api: DescribeStacks
-      Region: "{{ Region }}"
-      StackName: "{{ StackName }}"
-
+      Region: '{{ Region }}'
+      StackName: '{{ StackName }}'
   - name: ExtractInstance
     action: aws:executeScript
     inputs:
       Runtime: python3.8
       Handler: get_instance
+      Script: |-
+        def get_instance(event, _):
+            outputs = event.get('stack', {}).get('Outputs', [])
+            instance_id = None
+            for output in outputs:
+                if output.get('OutputKey') == 'InstanceId':
+                    instance_id = output.get('OutputValue')
+                    break
+            if not instance_id:
+                raise ValueError('CloudFormation stack does not expose an InstanceId output.')
+            return {'InstanceId': instance_id}
       InputPayload:
-        stack: "{{ DescribeStack.Stacks[0] }}"
-    script: |
-      def get_instance(event, _):
-          outputs = event.get('stack', {}).get('Outputs', [])
-          instance_id = None
-          for output in outputs:
-              if output.get('OutputKey') == 'InstanceId':
-                  instance_id = output.get('OutputValue')
-                  break
-          if not instance_id:
-              raise ValueError("CloudFormation stack does not expose an InstanceId output.")
-          return {"InstanceId": instance_id}
-
+        stack: '{{ DescribeStack.Stacks[0] }}'
   - name: BuildExtraVars
     action: aws:executeScript
     inputs:
       Runtime: python3.8
       Handler: build_vars
+      Script: |-
+        import json
+
+        def build_vars(event, _):
+            extra_vars = {
+                'jira_download_url': event['jira_download_url'],
+                'jira_db_password': event['jira_db_password'],
+                'jira_tls_cert_b64': event['jira_tls_cert_b64'],
+                'jira_tls_key_b64': event['jira_tls_key_b64'],
+                'ansible_user': event['ansible_user'],
+            }
+            return {'ExtraVars': json.dumps(extra_vars)}
       InputPayload:
-        jira_download_url: "{{ JiraDownloadUrl }}"
-        jira_db_password: "{{ JiraDbPassword }}"
-        jira_tls_cert_b64: "{{ JiraTlsCertB64 }}"
-        jira_tls_key_b64: "{{ JiraTlsKeyB64 }}"
-        ansible_user: "{{ AnsibleUser }}"
-    script: |
-      import json
-
-      def build_vars(event, _):
-          extra_vars = {
-              "jira_download_url": event["jira_download_url"],
-              "jira_db_password": event["jira_db_password"],
-              "jira_tls_cert_b64": event["jira_tls_cert_b64"],
-              "jira_tls_key_b64": event["jira_tls_key_b64"],
-              "ansible_user": event["ansible_user"],
-          }
-          return {"ExtraVars": json.dumps(extra_vars)}
-
+        jira_download_url: '{{ JiraDownloadUrl }}'
+        jira_db_password: '{{ JiraDbPassword }}'
+        jira_tls_cert_b64: '{{ JiraTlsCertB64 }}'
+        jira_tls_key_b64: '{{ JiraTlsKeyB64 }}'
+        ansible_user: '{{ AnsibleUser }}'
   - name: RunAnsible
     action: aws:executeAwsApi
     inputs:
@@ -107,22 +104,23 @@ mainSteps:
         InventoryFile:
           - inventory/hosts.ini
         ExtraVariables:
-          - "{{ BuildExtraVars.ExtraVars }}"
-
+          - '{{ BuildExtraVars.ExtraVars }}'
   - name: WaitForCommand
     action: aws:waitForAwsResourceProperty
     inputs:
       Service: ssm
       Api: GetCommandInvocation
-      Region: "{{ Region }}"
-      CommandId: "{{ RunAnsible.Command.CommandId }}"
-      InstanceId: "{{ ExtractInstance.InstanceId }}"
-      PropertySelector: "$.Status"
+      Region: '{{ Region }}'
+      CommandId: '{{ RunAnsible.Command.CommandId }}'
+      InstanceId: '{{ ExtractInstance.InstanceId }}'
+      PropertySelector: '$.Status'
       DesiredValues:
         - Success
 
 outputs:
-  - name: InstanceId
-    selector: "{{ ExtractInstance.InstanceId }}"
-  - name: CommandId
-    selector: "{{ RunAnsible.Command.CommandId }}"
+  - Name: InstanceId
+    Selector: $.ExtractInstance.InstanceId
+    Type: String
+  - Name: CommandId
+    Selector: $.RunAnsible.Command.CommandId
+    Type: String
