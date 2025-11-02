@@ -19,6 +19,7 @@ These rules apply to the entire repository.
 ## Testing & Validation
 - Provide CLI snippets in documentation for validating CloudFormation stacks and Automation runs.
 - When adding CloudFormation templates, run them through `cfn-lint` if available.
+- When modifying YAML files, run a YAML parser locally (e.g., `ruby -ryaml -e 'YAML.load_file("path/to/file")'`) and report the command under Testing.
 - Keep Ansible YAML indented with two spaces per level.
 - Note any AWS resources that must pre-exist (e.g., VPC, subnet, Elastic IP) in the README.
 

@@ -116,10 +116,11 @@ mainSteps:
       PropertySelector: '$.Status'
       DesiredValues:
         - Success
+
 outputs:
-  - Name: InstanceId
-    Selector: '$.ExtractInstance.InstanceId'
-    Type: String
-  - Name: CommandId
-    Selector: '$.RunAnsible.Command.CommandId'
-    Type: String
+- Name: InstanceId
+  Selector: '$.ExtractInstance.InstanceId'
+  Type: String
+- Name: CommandId
+  Selector: '$.RunAnsible.Command.CommandId'
+  Type: String
