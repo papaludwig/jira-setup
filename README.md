@@ -113,7 +113,7 @@ Run from an environment that has:
    ```bash
    aws ssm get-automation-execution \
      --automation-execution-id <execution-id-from-bootstrap> \
-     --region us-west-2 \
+     --region us-east-1 \
      --query 'AutomationExecution.{Status:AutomationExecutionStatus,Outputs:Outputs}'
    ```
 
@@ -211,15 +211,15 @@ To tear down the environment:
 2. Delete the CloudFormation stack:
 
    ```bash
-   aws cloudformation delete-stack --stack-name jira-demo --region us-west-2
-   aws cloudformation wait stack-delete-complete --stack-name jira-demo --region us-west-2
+   aws cloudformation delete-stack --stack-name jira-demo --region us-east-1
+   aws cloudformation wait stack-delete-complete --stack-name jira-demo --region us-east-1
    ```
 
 3. Remove the uploaded Ansible bundle from S3 if it is no longer needed.
 4. Optionally delete the `Jira-SetupBootstrap` Automation document:
 
    ```bash
-   aws ssm delete-document --name Jira-SetupBootstrap --region us-west-2
+   aws ssm delete-document --name Jira-SetupBootstrap --region us-east-1
    ```
 
 This returns the account to its pre-deployment state while preserving reusable
