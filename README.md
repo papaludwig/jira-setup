@@ -16,7 +16,8 @@ Automation for provisioning an AWS-hosted Jira Data Center demo environment. Ter
 Run from an environment with:
 
 - AWS credentials allowing EC2, IAM, and EIP association in the target account.
-- Ansible ≥ 2.15 installed (AWS CloudShell already includes it).
+- Ansible ≥ 2.15 installed (if missing, `scripts/bootstrap.sh` installs `ansible-core` into `.python/` under the project root).
+- Python 3 with `pip` available if the script needs to install Ansible automatically.
 - Jira download URL, database password, and TLS materials accessible as environment variables.
 - The `amazon.aws`, `community.postgresql`, and `community.general` Ansible collections (`ansible-galaxy collection install amazon.aws community.postgresql community.general`).
 
