@@ -116,7 +116,6 @@ mainSteps:
       PropertySelector: '$.Status'
       DesiredValues:
         - Success
-
 outputs:
   - Name: InstanceId
     Selector: '$.ExtractInstance.InstanceId'
