@@ -118,8 +118,8 @@ mainSteps:
         - Success
 outputs:
   - Name: InstanceId
-    Selector: '$.ExtractInstance.InstanceId'
+    Selector: "$.ExtractInstance.InstanceId"
     Type: String
   - Name: CommandId
-    Selector: '$.RunAnsible.Command.CommandId'
+    Selector: "$.RunAnsible.Command.CommandId"
     Type: String
