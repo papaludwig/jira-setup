@@ -28,6 +28,10 @@ mainSteps:
       Service: cloudformation
       Api: DescribeStacks
       StackName: '{{ StackName }}'
+    outputs:
+      - Name: Stacks
+        Selector: $.Stacks
+        Type: MapList
 
   - name: ExtractInstance
     action: aws:executeScript
