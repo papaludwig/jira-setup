@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export AWS_PAGER=""
+
+DEBUG_BOOTSTRAP_FLAG=${DEBUG_BOOTSTRAP:-}
+if [[ -n ${DEBUG_BOOTSTRAP_FLAG} ]]; then
+  set -x
+fi
+
+AWS_DEBUG_ARGS=()
+QUIET_BOOTSTRAP=true
+if [[ -n ${DEBUG_BOOTSTRAP_FLAG} ]]; then
+  AWS_DEBUG_ARGS+=(--debug)
+  QUIET_BOOTSTRAP=false
+fi
+
+aws_cli() {
+  aws "${AWS_DEBUG_ARGS[@]}" "$@"
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bootstrap.sh --stack-name <name> --bucket <s3-bucket> [options]
@@ -13,6 +31,9 @@ Required environment variables:
   JIRA_DB_PASSWORD   Password for the Jira PostgreSQL user.
   JIRA_TLS_CERT_B64  Base64-encoded TLS certificate chain for nginx.
   JIRA_TLS_KEY_B64   Base64-encoded TLS private key matching the certificate.
+
+Optional environment variables:
+  DEBUG_BOOTSTRAP    When set, enables shell tracing and AWS CLI --debug output.
 
 Options:
   --stack-name VALUE         CloudFormation stack name. (required)
@@ -126,7 +147,7 @@ for cmd in aws jq; do
 done
 
 if [[ -z ${REGION} ]]; then
-  REGION=$(aws configure get region 2>/dev/null || true)
+  REGION=$(aws_cli configure get region 2>/dev/null || true)
 fi
 
 if [[ -z ${REGION} ]]; then
@@ -164,23 +185,44 @@ fi
 ensure_automation_document() {
   local name="${AUTOMATION_DOCUMENT}"
   local content="automation/jira-bootstrap.yaml"
-  if aws ssm describe-document --name "${name}" --region "${REGION}" >/dev/null 2>&1; then
-    aws ssm update-document \
-      --name "${name}" \
-      --region "${REGION}" \
-      --content "file://${content}" \
-      --document-format YAML >/dev/null
-    aws ssm update-document-default-version \
-      --name "${name}" \
-      --region "${REGION}" \
-      --document-version "\$LATEST" >/dev/null
+  if [[ ${QUIET_BOOTSTRAP} == true ]]; then
+    if aws_cli ssm describe-document --name "${name}" --region "${REGION}" >/dev/null 2>&1; then
+      aws_cli ssm update-document \
+        --name "${name}" \
+        --region "${REGION}" \
+        --content "file://${content}" \
+        --document-format YAML >/dev/null
+      aws_cli ssm update-document-default-version \
+        --name "${name}" \
+        --region "${REGION}" \
+        --document-version "\$LATEST" >/dev/null
+    else
+      aws_cli ssm create-document \
+        --name "${name}" \
+        --region "${REGION}" \
+        --content "file://${content}" \
+        --document-type Automation \
+        --document-format YAML >/dev/null
+    fi
   else
-    aws ssm create-document \
-      --name "${name}" \
-      --region "${REGION}" \
-      --content "file://${content}" \
-      --document-type Automation \
-      --document-format YAML >/dev/null
+    if aws_cli ssm describe-document --name "${name}" --region "${REGION}"; then
+      aws_cli ssm update-document \
+        --name "${name}" \
+        --region "${REGION}" \
+        --content "file://${content}" \
+        --document-format YAML
+      aws_cli ssm update-document-default-version \
+        --name "${name}" \
+        --region "${REGION}" \
+        --document-version "\$LATEST"
+    else
+      aws_cli ssm create-document \
+        --name "${name}" \
+        --region "${REGION}" \
+        --content "file://${content}" \
+        --document-type Automation \
+        --document-format YAML
+    fi
   fi
 }
 
@@ -216,11 +258,11 @@ if [[ ${SKIP_STACK} == false ]]; then
     PARAMETER_ARGS+=("${param}")
   done
 
-  CFN_CMD=(aws cloudformation deploy \
-    --stack-name "${STACK_NAME}" \
-    --template-file "${TEMPLATE}" \
-    --capabilities CAPABILITY_NAMED_IAM \
-    --region "${REGION}")
+  CFN_CMD=(aws_cli cloudformation deploy)
+  CFN_CMD+=(--stack-name "${STACK_NAME}")
+  CFN_CMD+=(--template-file "${TEMPLATE}")
+  CFN_CMD+=(--capabilities CAPABILITY_NAMED_IAM)
+  CFN_CMD+=(--region "${REGION}")
   if [[ ${#PARAMETER_ARGS[@]} -gt 0 ]]; then
     CFN_CMD+=(--parameter-overrides "${PARAMETER_ARGS[@]}")
   fi
@@ -249,7 +291,7 @@ AUTOMATION_PARAMS=$(jq -cn \
     JiraTlsKeyB64: [$keyb]
   }')
 
-EXECUTION_ID=$(aws ssm start-automation-execution \
+EXECUTION_ID=$(aws_cli ssm start-automation-execution \
   --document-name "${AUTOMATION_DOCUMENT}" \
   --region "${REGION}" \
   --parameters "${AUTOMATION_PARAMS}" \
