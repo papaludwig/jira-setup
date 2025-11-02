@@ -25,7 +25,7 @@ Run from an environment with:
 AWS CloudShell persists the contents of your home directory across sessions, so you typically only need to download the code once per region. If you start in a brand-new environment—or want to refresh to the latest commit—use `curl` to grab the repository tarball and extract it:
 
 ```bash
-curl -L https://github.com/<your-org>/jira-setup/archive/refs/heads/main.tar.gz | tar -xz
+curl -L https://github.com/papaludwig/jira-setup/archive/refs/heads/main.tar.gz | tar -xz
 cd jira-setup-main
 ```
 
