@@ -24,6 +24,7 @@ USAGE
 bucket=""
 key=""
 prefix="jira-ansible/"
+prefix_overridden=false
 output=""
 
 for cmd in aws rsync zip; do
@@ -45,6 +46,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --prefix)
       prefix="$2"
+      prefix_overridden=true
       shift 2
       ;;
     --output)
@@ -69,7 +71,7 @@ if [[ -z ${bucket} ]]; then
   exit 1
 fi
 
-if [[ -n ${key} && -n ${prefix} ]]; then
+if [[ -n ${key} && ${prefix_overridden} == true ]]; then
   echo "Specify either --key or --prefix, not both." >&2
   exit 1
 fi
