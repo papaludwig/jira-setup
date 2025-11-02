@@ -86,10 +86,11 @@ Run from an environment that has:
 3. Run the bootstrap script, supplying the CloudFormation parameters that vary
    per environment. The example below assumes a VPC, subnet, and Elastic IP are
    already provisioned and that `instantbrains-demo-artifacts` is the S3 bucket where the
-   Ansible bundle should reside:
+   Ansible bundle should reside. Set `DEBUG_BOOTSTRAP=1` if you want shell tracing
+   and AWS CLI `--debug` output while the script runs:
 
    ```bash
-   ./scripts/bootstrap.sh \
+   DEBUG_BOOTSTRAP=1 ./scripts/bootstrap.sh \
      --stack-name jira-demo \
      --bucket instantbrains-demo-artifacts \
      --region us-east-1 \
