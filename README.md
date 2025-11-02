@@ -29,6 +29,45 @@ Run from an environment that has:
   - Jira PostgreSQL password (SecureString in Parameter Store recommended).
   - Base64-encoded TLS certificate chain and key.
 
+## Initial Setup
+
+1. Retrieve this repository in your execution environment. When running from
+   CloudShell, `curl` works even if `git` is unavailable:
+
+   ```bash
+   curl -L https://github.com/example-org/jira-setup/archive/refs/heads/main.tar.gz | tar -xz
+   mv jira-setup-main jira-setup
+   cd jira-setup
+   ```
+
+   Substitute `example-org` with the GitHub organization or user that hosts the
+   repository if it differs.
+
+2. Create the S3 bucket that will hold the packaged Ansible bundle. The helper
+   script below provisions `demo-artifacts` in `us-east-1`, enables versioning
+   and default encryption, and blocks public access:
+
+   ```bash
+   ./scripts/create_artifact_bucket.sh --bucket demo-artifacts --region us-east-1
+   ```
+
+   The script is idempotent; rerunning it simply reapplies the secure settings
+   if the bucket already exists.
+
+3. (Optional) Build the bucket manually with the AWS CLI instead of using the
+   helper script:
+
+   ```bash
+   aws s3api create-bucket --bucket demo-artifacts --region us-east-1
+   aws s3api put-bucket-versioning --bucket demo-artifacts --versioning-configuration Status=Enabled --region us-east-1
+   aws s3api put-bucket-encryption --bucket demo-artifacts \
+     --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' \
+     --region us-east-1
+   aws s3api put-public-access-block --bucket demo-artifacts \
+     --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
+     --region us-east-1
+   ```
+
 ## Quick Start
 
 1. Clone or download this repository in your execution environment.
