@@ -16,8 +16,8 @@ Options:
   -h, --help           Show this help text.
 
 Examples:
-  ./scripts/package_ansible.sh --bucket demo-artifacts
-  ./scripts/package_ansible.sh --bucket demo-artifacts --prefix jira/prod/ --output /tmp/jira-ansible.zip
+  ./scripts/package_ansible.sh --bucket instantbrains-demo-artifacts
+  ./scripts/package_ansible.sh --bucket instantbrains-demo-artifacts --prefix jira/prod/ --output /tmp/jira-ansible.zip
 USAGE
 }
 

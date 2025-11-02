@@ -44,11 +44,13 @@ Run from an environment that has:
    repository if it differs.
 
 2. Create the S3 bucket that will hold the packaged Ansible bundle. The helper
-   script below provisions `demo-artifacts` in `us-east-1`, enables versioning
-   and default encryption, and blocks public access:
+   script below provisions `instantbrains-demo-artifacts` in `us-east-1`,
+   enables versioning and default encryption, and blocks public access. Reuse
+   this bucket for other automations (e.g., Splunk setup) by placing each
+   bundle under its own prefix:
 
    ```bash
-   ./scripts/create_artifact_bucket.sh --bucket demo-artifacts --region us-east-1
+   ./scripts/create_artifact_bucket.sh --bucket instantbrains-demo-artifacts --region us-east-1
    ```
 
    The script is idempotent; rerunning it simply reapplies the secure settings
@@ -58,12 +60,12 @@ Run from an environment that has:
    helper script:
 
    ```bash
-   aws s3api create-bucket --bucket demo-artifacts --region us-east-1
-   aws s3api put-bucket-versioning --bucket demo-artifacts --versioning-configuration Status=Enabled --region us-east-1
-   aws s3api put-bucket-encryption --bucket demo-artifacts \
+   aws s3api create-bucket --bucket instantbrains-demo-artifacts --region us-east-1
+   aws s3api put-bucket-versioning --bucket instantbrains-demo-artifacts --versioning-configuration Status=Enabled --region us-east-1
+   aws s3api put-bucket-encryption --bucket instantbrains-demo-artifacts \
      --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' \
      --region us-east-1
-   aws s3api put-public-access-block --bucket demo-artifacts \
+   aws s3api put-public-access-block --bucket instantbrains-demo-artifacts \
      --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
      --region us-east-1
    ```
@@ -83,13 +85,13 @@ Run from an environment that has:
 
 3. Run the bootstrap script, supplying the CloudFormation parameters that vary
    per environment. The example below assumes a VPC, subnet, and Elastic IP are
-   already provisioned and that `demo-artifacts` is the S3 bucket where the
+   already provisioned and that `instantbrains-demo-artifacts` is the S3 bucket where the
    Ansible bundle should reside:
 
    ```bash
    ./scripts/bootstrap.sh \
      --stack-name jira-demo \
-     --bucket demo-artifacts \
+     --bucket instantbrains-demo-artifacts \
      --region us-east-1 \
      --parameter VpcId=vpc-0e2b7d69 \
      --parameter SubnetId=subnet-4a11f267 \

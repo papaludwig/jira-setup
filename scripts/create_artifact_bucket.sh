@@ -6,11 +6,11 @@ usage() {
 Usage: $(basename "$0") [--bucket <name>] [--region <aws-region>]
 
 Creates (or updates hardening on) the S3 bucket used for Ansible artifacts.
-Defaults to bucket "demo-artifacts" in "us-east-1".
+Defaults to bucket "instantbrains-demo-artifacts" in "us-east-1".
 USAGE
 }
 
-BUCKET="demo-artifacts"
+BUCKET="instantbrains-demo-artifacts"
 REGION="us-east-1"
 
 while [[ $# -gt 0 ]]; do
