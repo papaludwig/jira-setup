@@ -294,6 +294,7 @@ AUTOMATION_PARAMS=$(jq -cn \
   }')
 
 EXECUTION_ID=$(aws_cli ssm start-automation-execution \
+  --region "${REGION}" \
   --document-name "${AUTOMATION_DOCUMENT}" \
   --parameters "${AUTOMATION_PARAMS}" \
   --query AutomationExecutionId \
