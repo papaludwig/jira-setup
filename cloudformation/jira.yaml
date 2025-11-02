@@ -59,6 +59,11 @@ Resources:
           FromPort: 443
           ToPort: 443
           IpProtocol: tcp
+        - CidrIp: 0.0.0.0/0
+          Description: HTTP redirect access
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
       SecurityGroupEgress:
         - CidrIp: 0.0.0.0/0
           Description: Allow outbound traffic
