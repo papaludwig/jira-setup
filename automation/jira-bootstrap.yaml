@@ -1,6 +1,7 @@
 ---
 schemaVersion: '0.3'
-description: Run Ansible on a stack-managed EC2 instance
+description: Run Ansible on a stack-managed EC2 instance and return stdout/stderr
+
 parameters:
   StackName:
     type: String
@@ -35,11 +36,10 @@ mainSteps:
       Handler: get_instance
       Script: |-
         def get_instance(event, _):
-            outputs = event.get('stack', {}).get('Outputs', [])
-            for o in outputs:
+            for o in event.get('stack', {}).get('Outputs', []):
                 if o.get('OutputKey') == 'InstanceId':
                     return {'InstanceId': str(o.get('OutputValue'))}
-            raise ValueError('No InstanceId output found.')
+            raise ValueError('No InstanceId output found in the stack.')
       InputPayload:
         stack: '{{ DescribeStack.Stacks[0] }}'
     outputs:
@@ -105,7 +105,44 @@ mainSteps:
       PropertySelector: '$.Status'
       DesiredValues: ['Success']
 
-# IMPORTANT: document-level outputs must be a list of strings (stepName.outputName)
+  # Discover the plugin name SSM used on the instance (avoids guessing)
+  - name: DiscoverPlugin
+    action: aws:executeAwsApi
+    inputs:
+      Service: ssm
+      Api: ListCommandInvocations
+      CommandId: '{{ RunAnsible.CommandId }}'
+      InstanceId: '{{ ExtractInstance.InstanceId }}'
+      Details: true
+    outputs:
+      - Name: PluginName
+        Selector: $.CommandInvocations[0].CommandPlugins[0].Name
+        Type: String
+
+  # Fetch stdout/stderr from the discovered plugin
+  - name: GetAnsibleOutput
+    action: aws:executeAwsApi
+    inputs:
+      Service: ssm
+      Api: GetCommandInvocation
+      CommandId: '{{ RunAnsible.CommandId }}'
+      InstanceId: '{{ ExtractInstance.InstanceId }}'
+      PluginName: '{{ DiscoverPlugin.PluginName }}'
+    outputs:
+      - Name: StdOut
+        Selector: $.StandardOutputContent
+        Type: String
+      - Name: StdErr
+        Selector: $.StandardErrorContent
+        Type: String
+      - Name: InvocationStatus
+        Selector: $.Status
+        Type: String
+
+# Document-level outputs must be an array of strings: stepName.outputName
 outputs:
   - 'ExtractInstance.InstanceId'
   - 'RunAnsible.CommandId'
+  - 'GetAnsibleOutput.StdOut'
+  - 'GetAnsibleOutput.StdErr'
+  - 'GetAnsibleOutput.InvocationStatus'
