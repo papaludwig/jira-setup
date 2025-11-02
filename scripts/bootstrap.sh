@@ -283,7 +283,6 @@ AUTOMATION_PARAMS=$(jq -cn \
   --arg keyb "${JIRA_TLS_KEY_B64}" \
   '{
     StackName: [$stack],
-    Region: [$region],
     AnsibleS3Bucket: [$bucket],
     AnsibleS3Key: [$key],
     AnsibleUser: [$user],
