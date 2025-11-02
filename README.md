@@ -158,6 +158,22 @@ aws ssm create-document \
   --content file://automation/jira-bootstrap.yaml
 ```
 
+AWS CLI does not expose a `validate-document` helper, so use the lightweight
+structural check bundled with this repository before uploading edits:
+
+```bash
+python3 scripts/validate_automation.py automation/jira-bootstrap.yaml
+```
+
+The helper prefers PyYAML when available but also ships with a tiny
+built-in loader so it works in locked-down environments such as CloudShell
+that cannot reach PyPI.
+
+The validator ensures the YAML parses, required fields are present, and the
+`outputs` and `mainSteps` blocks follow the layout that Systems Manager
+Automation expects. It surfaces mistakes early without needing to contact the
+AWS API.
+
 If the document already exists, switch to `aws ssm update-document` followed by
 `aws ssm update-document-default-version`.
 
