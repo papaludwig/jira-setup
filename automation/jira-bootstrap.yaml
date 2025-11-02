@@ -57,7 +57,7 @@ mainSteps:
                     break
             if not instance_id:
                 raise ValueError('CloudFormation stack does not expose an InstanceId output.')
-            return {'InstanceId': instance_id}
+            return {'InstanceId': str(instance_id)}
       InputPayload:
         stack: '{{ DescribeStack.Stacks[0] }}'
   - name: BuildExtraVars
@@ -116,11 +116,25 @@ mainSteps:
       PropertySelector: '$.Status'
       DesiredValues:
         - Success
+  - name: CollectOutputs
+    action: aws:executeScript
+    inputs:
+      Runtime: python3.8
+      Handler: handler
+      Script: |-
+        def handler(event, _):
+            return {
+                'InstanceId': str(event['instance_id']),
+                'CommandId': str(event['command_id']),
+            }
+    InputPayload:
+      instance_id: '{{ ExtractInstance.InstanceId }}'
+      command_id: '{{ RunAnsible.Command.CommandId }}'
 
 outputs:
   - Name: InstanceId
-    Selector: '$.ExtractInstance.InstanceId'
+    Selector: '$.CollectOutputs.InstanceId'
     Type: String
   - Name: CommandId
-    Selector: '$.RunAnsible.Command.CommandId'
+    Selector: '$.CollectOutputs.CommandId'
     Type: String
