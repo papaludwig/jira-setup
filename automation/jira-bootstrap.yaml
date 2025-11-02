@@ -29,7 +29,7 @@ mainSteps:
     inputs:
       Service: cloudformation
       Api: DescribeStacks
-      Region: '{{ Region }}'
+      AwsRegion: '{{ Region }}'
       StackName: '{{ StackName }}'
 
   - name: ExtractInstance
@@ -84,7 +84,7 @@ mainSteps:
     inputs:
       Service: ssm
       Api: SendCommand
-      Region: '{{ Region }}'
+      AwsRegion: '{{ Region }}'
       DocumentName: AWS-RunAnsiblePlaybook
       InstanceIds:
         - '{{ ExtractInstance.InstanceId }}'
@@ -105,7 +105,7 @@ mainSteps:
     inputs:
       Service: ssm
       Api: GetCommandInvocation
-      Region: '{{ Region }}'
+      AwsRegion: '{{ Region }}'
       CommandId: '{{ RunAnsible.CommandId }}'
       InstanceId: '{{ ExtractInstance.InstanceId }}'
       PropertySelector: '$.Status'
