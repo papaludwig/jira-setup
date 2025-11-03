@@ -40,17 +40,21 @@ mainSteps:
       Handler: get_instance
       Script: |-
         def get_instance(event, _):
-            for o in event.get('stack', {}).get('Outputs', []):
-                if o.get('OutputKey') == 'InstanceId':
-                    return {'InstanceId': str(o.get('OutputValue'))}
-            raise ValueError('No InstanceId output found in the stack.')
+            stacks = event.get('stacks', [])
+            if isinstance(stacks, list) and stacks:
+                stack0 = stacks[0]
+                for o in stack0.get('Outputs', []):
+                    if o.get('OutputKey') == 'InstanceId':
+                        return {'InstanceId': str(o.get('OutputValue'))}
+                raise ValueError('No InstanceId output found in the stack.')
+            raise ValueError('No stacks returned by DescribeStacks.')
       InputPayload:
-        stack: '{{ DescribeStack.Stacks[0] }}'
+        stacks: '{{ DescribeStack.Stacks }}'
     outputs:
       - Name: InstanceId
         Selector: $.Payload.InstanceId
         Type: String
-
+  
   - name: BuildExtraVars
     action: aws:executeScript
     inputs:
