@@ -29,9 +29,9 @@ mainSteps:
       Api: DescribeStacks
       StackName: '{{ StackName }}'
     outputs:
-      - Name: Stacks
-        Selector: $.Stacks
-        Type: MapList
+      - Name: Stack
+        Selector: $.Stacks[0]
+        Type: Map
 
   - name: ExtractInstance
     action: aws:executeScript
@@ -40,21 +40,17 @@ mainSteps:
       Handler: get_instance
       Script: |-
         def get_instance(event, _):
-            stacks = event.get('stacks', [])
-            if isinstance(stacks, list) and stacks:
-                stack0 = stacks[0]
-                for o in stack0.get('Outputs', []):
-                    if o.get('OutputKey') == 'InstanceId':
-                        return {'InstanceId': str(o.get('OutputValue'))}
-                raise ValueError('No InstanceId output found in the stack.')
-            raise ValueError('No stacks returned by DescribeStacks.')
+            for o in event.get('stack', {}).get('Outputs', []):
+                if o.get('OutputKey') == 'InstanceId':
+                    return {'InstanceId': str(o.get('OutputValue'))}
+            raise ValueError('No InstanceId output found in the stack.')
       InputPayload:
-        stacks: '{{ DescribeStack.Stacks }}'
+        stack: '{{ DescribeStack.Stack }}'
     outputs:
       - Name: InstanceId
         Selector: $.Payload.InstanceId
         Type: String
-  
+
   - name: BuildExtraVars
     action: aws:executeScript
     inputs:
@@ -88,33 +84,39 @@ mainSteps:
     inputs:
       Service: ssm
       Api: SendCommand
-      DocumentName: AWS-RunAnsiblePlaybook
+      DocumentName: AWS-ApplyAnsiblePlaybooks
       InstanceIds:
         - '{{ ExtractInstance.InstanceId }}'
       Parameters:
         SourceType: ['S3']
-        SourceInfo: ['{"path":"https://s3.amazonaws.com/{{ AnsibleS3Bucket }}/{{ AnsibleS3Key }}"}']
+        # Virtual-hosted–style S3 URL is fine; path-style also works.
+        SourceInfo: ['{"path":"https://{{ AnsibleS3Bucket }}.s3.amazonaws.com/{{ AnsibleS3Key }}"}']
         InstallDependencies: ['True']
         PlaybookFile: ['playbooks/site.yml']
-        InventoryFile: ['inventory/hosts.ini']
+        # Ansible accepts JSON for --extra-vars; see notes below.
         ExtraVariables: ['{{ BuildExtraVars.ExtraVars }}']
+        Check: ['False']
+        Verbose: ['-vv']
+        TimeoutSeconds: ['3600']
     outputs:
       - Name: CommandId
         Selector: $.Command.CommandId
         Type: String
 
+  # Wait for a terminal status so we can always capture logs (success or fail).
   - name: WaitForCommand
     action: aws:waitForAwsResourceProperty
     inputs:
       Service: ssm
-      Api: GetCommandInvocation
+      Api: ListCommandInvocations
       CommandId: '{{ RunAnsible.CommandId }}'
       InstanceId: '{{ ExtractInstance.InstanceId }}'
-      PropertySelector: '$.Status'
-      DesiredValues: ['Success']
+      Details: true
+      PropertySelector: '$.CommandInvocations[0].Status'
+      DesiredValues: ['Success', 'Failed', 'Cancelled', 'TimedOut']
 
-  # Discover the plugin name SSM used on the instance (avoids guessing)
-  - name: DiscoverPlugin
+  # Get the list of plugins used by this SendCommand (download, shell, etc.)
+  - name: DiscoverPlugins
     action: aws:executeAwsApi
     inputs:
       Service: ssm
@@ -123,11 +125,35 @@ mainSteps:
       InstanceId: '{{ ExtractInstance.InstanceId }}'
       Details: true
     outputs:
+      - Name: Plugins
+        Selector: $.CommandInvocations[0].CommandPlugins
+        Type: MapList
+
+  # Pick the plugin that actually ran Ansible (aws:runShellScript).
+  - name: PickAnsiblePlugin
+    action: aws:executeScript
+    inputs:
+      Runtime: python3.11
+      Handler: pick
+      Script: |-
+        def pick(event, _):
+            # Prefer the last aws:runShellScript plugin (that's the Ansible run).
+            plugins = event.get('plugins', [])
+            candidates = [p for p in plugins if p.get('Name') == 'aws:runShellScript']
+            if candidates:
+                return {'PluginName': candidates[-1].get('Name')}
+            # Fallback to the last plugin if not found
+            if plugins:
+                return {'PluginName': plugins[-1].get('Name')}
+            raise ValueError('No plugins found for command.')
+      InputPayload:
+        plugins: '{{ DiscoverPlugins.Plugins }}'
+    outputs:
       - Name: PluginName
-        Selector: $.CommandInvocations[0].CommandPlugins[0].Name
+        Selector: $.Payload.PluginName
         Type: String
 
-  # Fetch stdout/stderr from the discovered plugin
+  # Fetch stdout/stderr for the selected plugin.
   - name: GetAnsibleOutput
     action: aws:executeAwsApi
     inputs:
@@ -135,7 +161,7 @@ mainSteps:
       Api: GetCommandInvocation
       CommandId: '{{ RunAnsible.CommandId }}'
       InstanceId: '{{ ExtractInstance.InstanceId }}'
-      PluginName: '{{ DiscoverPlugin.PluginName }}'
+      PluginName: '{{ PickAnsiblePlugin.PluginName }}'
     outputs:
       - Name: StdOut
         Selector: $.StandardOutputContent
@@ -147,7 +173,7 @@ mainSteps:
         Selector: $.Status
         Type: String
 
-# Document-level outputs must be an array of strings: stepName.outputName
+# Document-level outputs
 outputs:
   - 'ExtractInstance.InstanceId'
   - 'RunAnsible.CommandId'
