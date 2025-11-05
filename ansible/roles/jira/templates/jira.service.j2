@@ -6,7 +6,7 @@ After=network.target postgresql-15.service
 Type=forking
 User=jira
 Group=jira
-Environment=JIRA_HOME=/var/atlassian/application-data/jira
+Environment="JAVA_HOME={{ jira_java_home }}"
 ExecStart=/opt/atlassian/jira/bin/start-jira.sh
 ExecStop=/opt/atlassian/jira/bin/stop-jira.sh
 PIDFile=/opt/atlassian/jira/work/catalina.pid
