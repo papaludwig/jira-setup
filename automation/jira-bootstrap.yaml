@@ -119,6 +119,82 @@ mainSteps:
           - ansible-galaxy collection install amazon.aws community.postgresql community.general --force
         executionTimeout: ["1800"]
 
+  - name: InstallCollections
+    action: aws:executeAwsApi
+    inputs:
+      Service: ssm
+      Api: SendCommand
+      DocumentName: AWS-RunShellScript
+      InstanceIds:
+        - '{{ ExtractInstance.InstanceId }}'
+      Parameters:
+        commands:
+          - set -euo pipefail
+          # --- Ensure Python3 + pip + unzip exist (varies by distro) ---
+          - |
+            if command -v dnf >/dev/null 2>&1; then
+              dnf -y install python3 python3-pip unzip || true
+              # Try to add Python 3.11 if only older Python is present
+              if ! python3 - <<'PY' 2>/dev/null; then pass
+  PY
+              then dnf -y install python3.11 python3.11-pip || true; fi
+            elif command -v yum >/dev/null 2>&1; then
+              yum -y install python3 python3-pip unzip || true
+            elif command -v apt-get >/dev/null 2>&1; then
+              apt-get update -y
+              apt-get install -y python3 python3-pip unzip || true
+            fi
+  
+          # --- Pick ansible-core band based on available Python ---
+          - |
+            PYMIN=$(python3 - <<'PY'
+            import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")
+  PY
+            ) || PYMIN="0.0"
+            echo "Detected python3: ${PYMIN}"
+  
+            # Default to 2.17 if python3 is 3.10; prefer 2.18 if python3 >= 3.11
+            if python3 - <<'PY'
+  import sys
+  exit(0 if sys.version_info >= (3,11) else 1)
+  PY
+            then
+              export AC_RANGE='ansible-core>=2.18,<2.19'
+            elif python3 - <<'PY'
+  import sys
+  exit(0 if sys.version_info >= (3,10) else 1)
+  PY
+            then
+              export AC_RANGE='ansible-core>=2.17,<2.18'
+            else
+              echo "ERROR: Need Python >=3.10 for modern ansible-core. Please use an AMI with Python 3.10+ (e.g., Ubuntu 22.04, AL2023, RHEL9) or add install steps for Python 3.11." >&2
+              exit 1
+            fi
+            echo "Installing $AC_RANGE"
+  
+          # --- Install/upgrade pip, then install ansible-core and deps (boto3/psycopg) ---
+          - |
+            PIP="python3 -m pip"
+            set +e
+            $PIP install --upgrade pip || $PIP install --upgrade pip --break-system-packages
+            set -e
+            $PIP install "$AC_RANGE" || $PIP install "$AC_RANGE" --break-system-packages
+            # amazon.aws >= 9 expects boto3/botocore >= 1.34
+            $PIP install 'boto3>=1.34' 'botocore>=1.34' || $PIP install 'boto3>=1.34' 'botocore>=1.34' --break-system-packages
+            # PostgreSQL driver for community.postgresql modules
+            $PIP install 'psycopg2-binary>=2.9' || $PIP install 'psycopg[binary]>=3.1' --break-system-packages || true
+  
+          # --- Install collections with pinned majors (range specifiers) ---
+          - >
+            ansible-galaxy collection install
+            'amazon.aws:>=9.0.0,<10.0.0'
+            'community.general:>=11.0.0,<12.0.0'
+            'community.postgresql:>=4.0.0,<5.0.0'
+            --force
+  
+          - ansible --version
+        executionTimeout: ["2400"]
+
   - name: RunAnsible
     action: aws:executeAwsApi
     inputs:
@@ -129,11 +205,9 @@ mainSteps:
         - '{{ ExtractInstance.InstanceId }}'
       Parameters:
         SourceType: ['S3']
-        # Virtual-hosted–style S3 URL is fine; path-style also works.
         SourceInfo: ['{"path":"https://{{ AnsibleS3Bucket }}.s3.amazonaws.com/{{ AnsibleS3Key }}"}']
-        InstallDependencies: ['True']
+        InstallDependencies: ['False']        # <— flipped from True
         PlaybookFile: ['playbooks/site.yml']
-        # Ansible accepts JSON for --extra-vars; see notes below.
         ExtraVariables: ['{{ BuildExtraVars.ExtraVars }}']
         Check: ['False']
         Verbose: ['-vv']
