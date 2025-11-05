@@ -55,39 +55,6 @@ mainSteps:
         Selector: $.Payload.InstanceId
         Type: String
 
-  - name: BuildExtraVars
-    action: aws:executeScript
-    inputs:
-      Runtime: python3.11
-      Handler: build_vars
-      Script: |-
-        import urllib.parse
-
-        def enc(v: str) -> str:
-            # Percent-encode everything so it passes the doc's allowedPattern
-            return urllib.parse.quote(str(v), safe='')
-
-        def build_vars(event, _):
-            # NOTE: encode only values that may contain ':' or other forbidden chars
-            parts = [
-              f"jira_download_url={enc(event['jira_download_url'])}",
-              f"jira_db_password={enc(event['jira_db_password'])}",
-              f"jira_tls_cert_b64={event['jira_tls_cert_b64']}",
-              f"jira_tls_key_b64={event['jira_tls_key_b64']}",
-              f"ansible_user={event['ansible_user']}",
-            ]
-            return {'ExtraVars': ' '.join(parts)}
-      InputPayload:
-        jira_download_url: '{{ JiraDownloadUrl }}'
-        jira_db_password: '{{ JiraDbPassword }}'
-        jira_tls_cert_b64: '{{ JiraTlsCertB64 }}'
-        jira_tls_key_b64: '{{ JiraTlsKeyB64 }}'
-        ansible_user: '{{ AnsibleUser }}'
-    outputs:
-      - Name: ExtraVars
-        Selector: $.Payload.ExtraVars
-        Type: String
-
   - name: InstallCollections
     action: aws:executeAwsApi
     inputs:
@@ -137,6 +104,27 @@ mainSteps:
           - ansible --version
         executionTimeout: ["2400"]
 
+  - name: WriteExtraVarsFile
+    action: aws:executeAwsApi
+    inputs:
+      Service: ssm
+      Api: SendCommand
+      DocumentName: AWS-RunShellScript
+      InstanceIds:
+        - '{{ ExtractInstance.InstanceId }}'
+      Parameters:
+        commands:
+          - set -euo pipefail
+          - |
+            cat >/var/tmp/jira_extravars.yml <<'YAML'
+            jira_download_url: "{{ JiraDownloadUrl }}"
+            jira_db_password: "{{ JiraDbPassword }}"
+            jira_tls_cert_b64: "{{ JiraTlsCertB64 }}"
+            jira_tls_key_b64: "{{ JiraTlsKeyB64 }}"
+            ansible_user: "{{ AnsibleUser }}"
+            YAML
+        executionTimeout: ["600"]
+
   - name: RunAnsible
     action: aws:executeAwsApi
     inputs:
@@ -153,7 +141,7 @@ mainSteps:
         SourceInfo: ['{"path":"https://s3.amazonaws.com/{{ AnsibleS3Bucket }}/{{ AnsibleS3Key }}"}']
         InstallDependencies: ['False']
         PlaybookFile: ['playbooks/site.yml']
-        ExtraVariables: ['{{ BuildExtraVars.ExtraVars }}']
+        ExtraVariables: ['@/var/tmp/jira_extravars.yml']
         Check: ['False']
         Verbose: ['-vv']
     outputs:
