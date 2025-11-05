@@ -79,6 +79,46 @@ mainSteps:
         Selector: $.Payload.ExtraVars
         Type: String
 
+  - name: InstallCollections
+    action: aws:executeAwsApi
+    inputs:
+      Service: ssm
+      Api: SendCommand
+      DocumentName: AWS-RunShellScript
+      InstanceIds:
+        - '{{ ExtractInstance.InstanceId }}'
+      Parameters:
+        commands:
+          - set -euo pipefail
+          # 1) Ensure ansible is present (package mgrs or pip as a fallback)
+          - |
+            if ! command -v ansible-galaxy >/dev/null 2>&1; then
+              if command -v dnf >/dev/null 2>&1; then
+                dnf -y install ansible-core python3-pip
+              elif command -v yum >/dev/null 2>&1; then
+                if command -v amazon-linux-extras >/dev/null 2>&1; then amazon-linux-extras enable ansible2 || true; fi
+                yum -y install ansible python3-pip || yum -y install ansible-core python3-pip
+              elif command -v apt-get >/dev/null 2>&1; then
+                apt-get update
+                apt-get -y install ansible python3-pip
+              else
+                python3 -m pip install --upgrade pip
+                python3 -m pip install 'ansible>=2.15,<2.18'
+              fi
+            fi
+          # 2) Ensure boto3 for amazon.aws (only needed if you actually use it)
+          - |
+            python3 - <<'PY'
+            import importlib, sys, subprocess
+            try:
+                importlib.import_module('boto3')
+            except Exception:
+                subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'boto3', 'botocore'])
+            PY
+          # 3) Install the collections into the default path (~/.ansible/collections)
+          - ansible-galaxy collection install amazon.aws community.postgresql community.general --force
+        executionTimeout: ["1800"]
+
   - name: RunAnsible
     action: aws:executeAwsApi
     inputs:
