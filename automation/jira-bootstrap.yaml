@@ -130,20 +130,44 @@ mainSteps:
     inputs:
       Service: ssm
       Api: SendCommand
-      DocumentName: AWS-ApplyAnsiblePlaybooks
+      DocumentName: AWS-RunShellScript
       InstanceIds:
         - '{{ ExtractInstance.InstanceId }}'
-      # API-level timeout for Run Command
       TimeoutSeconds: 3600
       Parameters:
-        SourceType: ['S3']
-        # Use the path-style form from AWS docs
-        SourceInfo: ['{"path":"https://s3.amazonaws.com/{{ AnsibleS3Bucket }}/{{ AnsibleS3Key }}"}']
-        InstallDependencies: ['False']
-        PlaybookFile: ['playbooks/site.yml']
-        ExtraVariables: ['@/var/tmp/jira_extravars.yml']
-        Check: ['False']
-        Verbose: ['-vv']
+        commands:
+          - set -euo pipefail
+          - mkdir -p /var/tmp/ansible_bundle && cd /var/tmp/ansible_bundle
+
+          # Ensure unzip + awscli exist (lightweight, no-ops if already present)
+          - |
+            if ! command -v unzip >/dev/null 2>&1; then
+              if command -v dnf >/dev/null 2>&1; then dnf -y install unzip || true
+              elif command -v yum >/dev/null 2>&1; then yum -y install unzip || true
+              elif command -v apt-get >/dev/null 2>&1; then apt-get update -y && apt-get install -y unzip || true
+              fi
+            fi
+          - |
+            if ! command -v aws >/dev/null 2>&1; then
+              if command -v dnf >/dev/null 2>&1; then dnf -y install awscli || true
+              elif command -v yum >/dev/null 2>&1; then yum -y install awscli || true
+              elif command -v apt-get >/dev/null 2>&1; then apt-get update -y && apt-get install -y awscli || true
+              fi
+            fi
+
+          # Download and unpack your bundle
+          - aws s3 cp "s3://{{ AnsibleS3Bucket }}/{{ AnsibleS3Key }}" bundle.zip
+          - unzip -o bundle.zip
+          - ls -la
+
+          # Run Ansible from the bundle root so ansible.cfg is picked up
+          - ansible --version
+          - |
+            if [ -f "ansible.cfg" ]; then echo "Using ansible.cfg from bundle"; fi
+          # If your ansible.cfg already sets inventory = inventory/hosts.ini,
+          # the -i flag is optional. Keeping it explicit doesn't hurt.
+          - ansible-playbook -i inventory/hosts.ini playbooks/site.yml -e "@/var/tmp/jira_extravars.yml" -vv
+        executionTimeout: ["3600"]
     outputs:
       - Name: CommandId
         Selector: $.Command.CommandId
