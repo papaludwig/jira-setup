@@ -1,0 +1,6 @@
+# Java major for Jira. Use 17 for Jira 10, 21 for Jira 11.
+jira_java_major: 17
+
+# On RPM families you can choose 'headless' (smaller) or 'devel' (JDK).
+# On Debian/Ubuntu we always install the JDK package provided.
+jira_java_rpm_flavor: headless   # or: devel
