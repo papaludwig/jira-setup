@@ -61,17 +61,22 @@ mainSteps:
       Runtime: python3.11
       Handler: build_vars
       Script: |-
-        import json
+        import urllib.parse
+
+        def enc(v: str) -> str:
+            # Percent-encode everything so it passes the doc's allowedPattern
+            return urllib.parse.quote(str(v), safe='')
+
         def build_vars(event, _):
-            return {
-              'ExtraVars': json.dumps({
-                'jira_download_url': event['jira_download_url'],
-                'jira_db_password': event['jira_db_password'],
-                'jira_tls_cert_b64': event['jira_tls_cert_b64'],
-                'jira_tls_key_b64': event['jira_tls_key_b64'],
-                'ansible_user': event['ansible_user'],
-              })
-            }
+            # NOTE: encode only values that may contain ':' or other forbidden chars
+            parts = [
+              f"jira_download_url={enc(event['jira_download_url'])}",
+              f"jira_db_password={enc(event['jira_db_password'])}",
+              f"jira_tls_cert_b64={event['jira_tls_cert_b64']}",
+              f"jira_tls_key_b64={event['jira_tls_key_b64']}",
+              f"ansible_user={event['ansible_user']}",
+            ]
+            return {'ExtraVars': ' '.join(parts)}
       InputPayload:
         jira_download_url: '{{ JiraDownloadUrl }}'
         jira_db_password: '{{ JiraDbPassword }}'
