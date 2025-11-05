@@ -29,9 +29,9 @@ mainSteps:
       Api: DescribeStacks
       StackName: '{{ StackName }}'
     outputs:
-      - Name: Stack
-        Selector: $.Stacks[0]
-        Type: Map
+      - Name: Stacks                 # <-- expose the full list
+        Selector: $.Stacks
+        Type: MapList                # <-- valid type; 'Map' is not allowed
 
   - name: ExtractInstance
     action: aws:executeScript
@@ -40,12 +40,16 @@ mainSteps:
       Handler: get_instance
       Script: |-
         def get_instance(event, _):
-            for o in event.get('stack', {}).get('Outputs', []):
-                if o.get('OutputKey') == 'InstanceId':
-                    return {'InstanceId': str(o.get('OutputValue'))}
-            raise ValueError('No InstanceId output found in the stack.')
+            stacks = event.get('stacks', [])
+            if isinstance(stacks, list) and stacks:
+                stack0 = stacks[0]
+                for o in stack0.get('Outputs', []):
+                    if o.get('OutputKey') == 'InstanceId':
+                        return {'InstanceId': str(o.get('OutputValue'))}
+                raise ValueError('No InstanceId output found in the stack.')
+            raise ValueError('No stacks returned by DescribeStacks.')
       InputPayload:
-        stack: '{{ DescribeStack.Stack }}'
+        stacks: '{{ DescribeStack.Stacks }}'   # <-- pass the list, not [0]
     outputs:
       - Name: InstanceId
         Selector: $.Payload.InstanceId
@@ -100,7 +104,7 @@ mainSteps:
               apt-get update -y
               apt-get install -y python3 python3-pip unzip || true
             fi
-          # Choose ansible-core band from Python version (no here-docs → YAML-safe)
+          # Choose ansible-core band from Python version (YAML-safe; no here-docs)
           - |
             if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)'; then
               AC_RANGE='ansible-core>=2.18,<2.19'
