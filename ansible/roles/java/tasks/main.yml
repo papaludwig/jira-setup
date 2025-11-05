@@ -1,6 +1,5 @@
 ---
-- name: "Prepare Corretto repo (RPM families)"
-  when: ansible_os_family in ['RedHat', 'Rocky', 'AlmaLinux', 'Amazon']
+- name: Add Corretto repo and key (Amazon Linux / RPM family)
   become: true
   block:
     - name: Import Corretto RPM signing key
@@ -8,39 +7,19 @@
         key: https://yum.corretto.aws/corretto.key
         state: present
 
-    - name: Add Corretto yum repo file
+    - name: Add Corretto yum repo
       ansible.builtin.get_url:
         url: https://yum.corretto.aws/corretto.repo
         dest: /etc/yum.repos.d/corretto.repo
         mode: "0644"
 
-    - name: Install Amazon Corretto {{ jira_java_major }} (RPM)
-      ansible.builtin.package:
-        name: "java-{{ jira_java_major }}-amazon-corretto-{{ jira_java_rpm_flavor }}"
-        state: present
-
-- name: "Prepare Corretto repo (Debian/Ubuntu)"
-  when: ansible_os_family == 'Debian'
+- name: Install Amazon Corretto {{ jira_java_major }} (RPM)
   become: true
-  block:
-    - name: Add Corretto APT signing key
-      ansible.builtin.apt_key:
-        url: https://apt.corretto.aws/corretto.key
-        state: present
+  ansible.builtin.package:
+    name: "java-{{ jira_java_major }}-amazon-corretto-{{ jira_java_rpm_flavor }}"
+    state: present
 
-    - name: Add Corretto APT repository
-      ansible.builtin.apt_repository:
-        repo: "deb https://apt.corretto.aws stable main"
-        state: present
-        filename: "corretto"
-
-    - name: Install Amazon Corretto {{ jira_java_major }} JDK (Debian/Ubuntu)
-      ansible.builtin.apt:
-        name: "java-{{ jira_java_major }}-amazon-corretto-jdk"
-        state: present
-        update_cache: true
-
-# Find the installed Corretto home (suffix differs by arch on RPM builds).
+# Discover the installed JAVA_HOME (name can include arch suffix)
 - name: Discover installed Corretto JAVA_HOME
   become: true
   ansible.builtin.shell: "ls -d /usr/lib/jvm/java-{{ jira_java_major }}-amazon-corretto* 2>/dev/null | head -n1"
@@ -54,25 +33,20 @@
     that: corretto_home.stdout != ""
     fail_msg: "Amazon Corretto {{ jira_java_major }} not found under /usr/lib/jvm."
 
-# Make Corretto the default 'java'
-- name: Set default java alternative to Corretto {{ jira_java_major }}
+- name: Set default 'java' alternative to Corretto {{ jira_java_major }}
   become: true
   community.general.alternatives:
     name: java
     path: "{{ corretto_home.stdout }}/bin/java"
 
-# If you installed a JDK (Debian or RPM 'devel'), make 'javac' default as well
-- name: Set default javac alternative when JDK present
+- name: Set default 'javac' alternative when JDK is installed
   become: true
   community.general.alternatives:
     name: javac
     path: "{{ corretto_home.stdout }}/bin/javac"
-  when: >
-    (ansible_os_family == 'Debian') or
-    (ansible_os_family in ['RedHat','Rocky','AlmaLinux','Amazon'] and jira_java_rpm_flavor == 'devel')
+  when: jira_java_rpm_flavor != 'headless'
 
-# Export JAVA_HOME for shells (service can also read it; see note below)
-- name: Create JAVA_HOME profile.d snippet
+- name: Expose JAVA_HOME system-wide for shells
   become: true
   ansible.builtin.copy:
     dest: /etc/profile.d/java_home.sh
@@ -81,8 +55,13 @@
       export JAVA_HOME={{ corretto_home.stdout }}
       export PATH=$JAVA_HOME/bin:$PATH
 
-# Optional sanity checks (nice for first run)
-- name: Verify java -version
+# Make JAVA_HOME easy to reuse in later roles/templates
+- name: Publish JAVA_HOME for downstream roles
+  ansible.builtin.set_fact:
+    jira_java_home: "{{ corretto_home.stdout }}"
+
+# Optional sanity checks
+- name: Show java -version
   ansible.builtin.command: java -version
   register: java_ver
   changed_when: false
@@ -92,7 +71,7 @@
   register: jmaj
   changed_when: false
 
-- name: Check Java major matches requested
+- name: Verify Java major matches requested
   ansible.builtin.assert:
     that: "(jmaj.stdout | int) == jira_java_major"
     fail_msg: "Detected Java {{ jmaj.stdout }}, expected {{ jira_java_major }}."
