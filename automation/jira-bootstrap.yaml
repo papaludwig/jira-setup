@@ -132,28 +132,38 @@ mainSteps:
           - ansible --version
         executionTimeout: ["2400"]
 
-  - name: RunAnsible
-    action: aws:executeAwsApi
-    inputs:
-      Service: ssm
-      Api: SendCommand
-      DocumentName: AWS-ApplyAnsiblePlaybooks
-      InstanceIds:
-        - '{{ ExtractInstance.InstanceId }}'
-      Parameters:
-        SourceType: ['S3']
-        SourceInfo: ['{"path":"https://{{ AnsibleS3Bucket }}.s3.amazonaws.com/{{ AnsibleS3Key }}"}']
-        InstallDependencies: ['False']
-        PlaybookFile: ['playbooks/site.yml']
-        ExtraVariables: ['{{ BuildExtraVars.ExtraVars }}']
-        Check: ['False']
-        Verbose: ['-vv']
-        TimeoutSeconds: ['3600']
-    outputs:
-      - Name: CommandId
-        Selector: $.Command.CommandId
-        Type: String
+- name: RunAnsible
+  action: aws:executeAwsApi
+  inputs:
+    Service: ssm
+    Api: SendCommand
+    DocumentName: AWS-ApplyAnsiblePlaybooks
+    InstanceIds:
+      - '{{ ExtractInstance.InstanceId }}'
 
+    # ✅ Run Command's own timeout (API-level)
+    TimeoutSeconds: 3600
+
+    # (Optional but recommended: persistent logs)
+    # CloudWatchOutputConfig:
+    #   CloudWatchOutputEnabled: true
+    #   CloudWatchLogGroupName: '/ssm/ansible'
+    # OutputS3BucketName: your-log-bucket
+    # OutputS3KeyPrefix: 'ssm-ansible/{{ automation:EXECUTION_ID }}'
+
+    Parameters:
+      SourceType: ['S3']
+      # Use the path-style form exactly as in AWS docs:
+      SourceInfo: ['{"path":"https://s3.amazonaws.com/{{ AnsibleS3Bucket }}/{{ AnsibleS3Key }}"}']
+      InstallDependencies: ['False']
+      PlaybookFile: ['playbooks/site.yml']
+      ExtraVariables: ['{{ BuildExtraVars.ExtraVars }}']
+      Check: ['False']
+      Verbose: ['-vv']
+  outputs:
+    - Name: CommandId
+      Selector: $.Command.CommandId
+      Type: String
   - name: WaitForCommand
     action: aws:waitForAwsResourceProperty
     inputs:
