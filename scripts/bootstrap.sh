@@ -178,8 +178,8 @@ else
     trimmed_prefix=${ANSIBLE_PREFIX%/}
     ANSIBLE_KEY="${trimmed_prefix}/ansible-${timestamp}.zip"
   fi
-  uploaded_key=$(./scripts/package_ansible.sh --bucket "${S3_BUCKET}" --key "${ANSIBLE_KEY}")
-  ANSIBLE_KEY="${uploaded_key}" # package script echoes the key actually used
+  ./scripts/package_ansible.sh --bucket "${S3_BUCKET}" --key "${ANSIBLE_KEY}" 1>&2
+  # keep ANSIBLE_KEY as computed earlier (timestamp-based)
 fi
 
 ensure_automation_document() {
