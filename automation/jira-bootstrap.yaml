@@ -29,9 +29,9 @@ mainSteps:
       Api: DescribeStacks
       StackName: '{{ StackName }}'
     outputs:
-      - Name: Stacks                 # <-- expose the full list
+      - Name: Stacks
         Selector: $.Stacks
-        Type: MapList                # <-- valid type; 'Map' is not allowed
+        Type: MapList
 
   - name: ExtractInstance
     action: aws:executeScript
@@ -49,7 +49,7 @@ mainSteps:
                 raise ValueError('No InstanceId output found in the stack.')
             raise ValueError('No stacks returned by DescribeStacks.')
       InputPayload:
-        stacks: '{{ DescribeStack.Stacks }}'   # <-- pass the list, not [0]
+        stacks: '{{ DescribeStack.Stacks }}'
     outputs:
       - Name: InstanceId
         Selector: $.Payload.InstanceId
@@ -140,41 +140,33 @@ mainSteps:
       DocumentName: AWS-ApplyAnsiblePlaybooks
       InstanceIds:
         - '{{ ExtractInstance.InstanceId }}'
-  
-      # ✅ Run Command's own timeout (API-level)
+      # API-level timeout for Run Command
       TimeoutSeconds: 3600
-  
-      # (Optional but recommended: persistent logs)
-      # CloudWatchOutputConfig:
-      #   CloudWatchOutputEnabled: true
-      #   CloudWatchLogGroupName: '/ssm/ansible'
-      # OutputS3BucketName: your-log-bucket
-      # OutputS3KeyPrefix: 'ssm-ansible/{{ automation:EXECUTION_ID }}'
-  
       Parameters:
         SourceType: ['S3']
-        # Use the path-style form exactly as in AWS docs:
+        # Use the path-style form from AWS docs
         SourceInfo: ['{"path":"https://s3.amazonaws.com/{{ AnsibleS3Bucket }}/{{ AnsibleS3Key }}"}']
         InstallDependencies: ['False']
         PlaybookFile: ['playbooks/site.yml']
         ExtraVariables: ['{{ BuildExtraVars.ExtraVars }}']
         Check: ['False']
         Verbose: ['-vv']
-      outputs:
-        - Name: CommandId
-          Selector: $.Command.CommandId
-          Type: String
-        - name: WaitForCommand
-          action: aws:waitForAwsResourceProperty
-          inputs:
-            Service: ssm
-            Api: ListCommandInvocations
-            CommandId: '{{ RunAnsible.CommandId }}'
-            InstanceId: '{{ ExtractInstance.InstanceId }}'
-            Details: true
-            PropertySelector: '$.CommandInvocations[0].Status'
-            DesiredValues: ['Success', 'Failed', 'Cancelled', 'TimedOut']
-  
+    outputs:
+      - Name: CommandId
+        Selector: $.Command.CommandId
+        Type: String
+
+  - name: WaitForCommand
+    action: aws:waitForAwsResourceProperty
+    inputs:
+      Service: ssm
+      Api: ListCommandInvocations
+      CommandId: '{{ RunAnsible.CommandId }}'
+      InstanceId: '{{ ExtractInstance.InstanceId }}'
+      Details: true
+      PropertySelector: '$.CommandInvocations[0].Status'
+      DesiredValues: ['Success', 'Failed', 'Cancelled', 'TimedOut']
+
   - name: DiscoverPlugins
     action: aws:executeAwsApi
     inputs:
