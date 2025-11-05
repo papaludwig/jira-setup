@@ -1,17 +1,44 @@
 [Unit]
 Description=Jira Service
 After=network.target postgresql-15.service
+Wants=network.target
+# If you truly need the network up (not just loopback), you can also do:
+# Wants=network-online.target
+# After=network-online.target
 
 [Service]
 Type=forking
 User=jira
 Group=jira
+
+# Java / Tomcat env
 Environment="JAVA_HOME={{ jira_java_home }}"
+Environment="CATALINA_PID=/opt/atlassian/jira/work/catalina.pid"
+# Optional: expose JIRA_HOME here if you don’t set it elsewhere
+# Environment="JIRA_HOME=/var/atlassian/application-data/jira"
+
+# Optional: JVM heap without touching setenv.sh
+# Environment="JVM_MINIMUM_MEMORY=2g"
+# Environment="JVM_MAXIMUM_MEMORY=4g"
+
+WorkingDirectory=/opt/atlassian/jira
+PIDFile=/opt/atlassian/jira/work/catalina.pid
+
+# Atlassian example uses 20000; adjust if your health check nags
+LimitNOFILE=20000
+
+# Optional: wait up to ~5 minutes for Postgres to accept connections
+# (requires pg_isready from the Postgres client package)
+# ExecStartPre=/bin/sh -c 'for i in {1..60}; do /usr/bin/pg_isready -q -h 127.0.0.1 -p 5432 && exit 0; sleep 5; done; exit 1'
+
 ExecStart=/opt/atlassian/jira/bin/start-jira.sh
 ExecStop=/opt/atlassian/jira/bin/stop-jira.sh
-PIDFile=/opt/atlassian/jira/work/catalina.pid
+
 Restart=on-failure
-TimeoutSec=300
+RestartSec=10
+TimeoutStartSec=300
+TimeoutStopSec=600
+SuccessExitStatus=143
 
 [Install]
 WantedBy=multi-user.target
