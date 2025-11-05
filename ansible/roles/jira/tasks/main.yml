@@ -12,9 +12,8 @@
 
 - name: Download Jira tarball
   ansible.builtin.get_url:
-    url: "{{ jira_download_url }}"
-    dest: "/opt/atlassian/{{ jira_download_url | basename }}"
-    checksum: "{{ jira_tarball_checksum | default(omit) }}"
+    url: "{{ jira_download_url | community.general.urldecode }}"
+    dest: /opt/atlassian/jira/atlassian-jira.tar.gz
     mode: "0644"
 
 - name: Extract Jira archive
