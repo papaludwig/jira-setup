@@ -164,16 +164,16 @@ mainSteps:
       - Name: CommandId
         Selector: $.Command.CommandId
         Type: String
-    - name: WaitForCommand
-      action: aws:waitForAwsResourceProperty
-      inputs:
-        Service: ssm
-        Api: ListCommandInvocations
-        CommandId: '{{ RunAnsible.CommandId }}'
-        InstanceId: '{{ ExtractInstance.InstanceId }}'
-        Details: true
-        PropertySelector: '$.CommandInvocations[0].Status'
-        DesiredValues: ['Success', 'Failed', 'Cancelled', 'TimedOut']
+      - name: WaitForCommand
+        action: aws:waitForAwsResourceProperty
+        inputs:
+          Service: ssm
+          Api: ListCommandInvocations
+          CommandId: '{{ RunAnsible.CommandId }}'
+          InstanceId: '{{ ExtractInstance.InstanceId }}'
+          Details: true
+          PropertySelector: '$.CommandInvocations[0].Status'
+          DesiredValues: ['Success', 'Failed', 'Cancelled', 'TimedOut']
   
   - name: DiscoverPlugins
     action: aws:executeAwsApi
